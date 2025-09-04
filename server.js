@@ -286,19 +286,6 @@ function updateSubmissionResults(points, yesCount, noCount, roundId, playerId) {
     });
 }
 
-// Export for use in server.js
-module.exports = {
-    db,
-    statements,
-    logGameCreated,
-    logPlayerJoined,
-    logRoundStarted,
-    logSubmission,
-    logVote,
-    updateGameStatus,
-    updatePlayerFinalScore,
-    logPlayerLeft
-};
 
 // Socket connection handling
 io.on('connection', (socket) => {
