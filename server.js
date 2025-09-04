@@ -1,3 +1,6 @@
+const Database = require('better-sqlite3');
+const fs = require('fs');
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -10,8 +13,15 @@ const io = socketIo(server);
 // Serve static files from public directory
 app.use(express.static('public'));
 
-// In-memory storage for rooms (we'll add database later)
+// In-memory storage for rooms
 const rooms = new Map();
+
+// Initialize database
+const dbPath = path.join(__dirname, 'game_data.db');
+const db = new Database(dbPath);
+
+// Enable foreign keys
+db.pragma('foreign_keys = ON');
 
 // Generate random room codes
 function generateRoomCode() {
@@ -27,6 +37,7 @@ function generateRoomCode() {
 function createRoom(code) {
     return {
         code: code,
+        dbGameId: null,
         players: new Map(), // playerId -> {nickname, score, socketId, hasSubmitted, hasVoted}
         gmSocketId: null,
         displaySocketId: null,
@@ -37,6 +48,257 @@ function createRoom(code) {
         createdAt: new Date()
     };
 }
+
+// Create tables if they don't exist
+function initializeDatabase() {
+    const schemaSQL = `
+    CREATE TABLE IF NOT EXISTS games (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code TEXT NOT NULL UNIQUE,
+        gm_id TEXT,
+        started_at DATETIME,
+        ended_at DATETIME,
+        total_rounds INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        socket_id TEXT NOT NULL,
+        nickname TEXT NOT NULL,
+        game_id INTEGER NOT NULL,
+        final_score INTEGER DEFAULT 0,
+        joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        left_at DATETIME,
+        FOREIGN KEY (game_id) REFERENCES games(id),
+        UNIQUE(socket_id, game_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS rounds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id INTEGER NOT NULL,
+        round_number INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        submission_ended_at DATETIME,
+        voting_ended_at DATETIME,
+        results_shown_at DATETIME,
+        total_submissions INTEGER DEFAULT 0,
+        total_votes INTEGER DEFAULT 0,
+        FOREIGN KEY (game_id) REFERENCES games(id),
+        UNIQUE(game_id, round_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        round_id INTEGER NOT NULL,
+        player_id INTEGER NOT NULL,
+        exemplar TEXT NOT NULL,
+        submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        points_earned INTEGER DEFAULT 0,
+        yes_votes INTEGER DEFAULT 0,
+        no_votes INTEGER DEFAULT 0,
+        FOREIGN KEY (round_id) REFERENCES rounds(id),
+        FOREIGN KEY (player_id) REFERENCES players(id),
+        UNIQUE(round_id, player_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER NOT NULL,
+        voter_player_id INTEGER NOT NULL,
+        vote BOOLEAN NOT NULL,
+        voted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (submission_id) REFERENCES submissions(id),
+        FOREIGN KEY (voter_player_id) REFERENCES players(id),
+        UNIQUE(submission_id, voter_player_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_games_room_code ON games(room_code);
+    CREATE INDEX IF NOT EXISTS idx_players_game_id ON players(game_id);
+    CREATE INDEX IF NOT EXISTS idx_rounds_game_id ON rounds(game_id);
+    CREATE INDEX IF NOT EXISTS idx_submissions_round_id ON submissions(round_id);
+    CREATE INDEX IF NOT EXISTS idx_submissions_player_id ON submissions(player_id);
+    CREATE INDEX IF NOT EXISTS idx_votes_submission_id ON votes(submission_id);
+    CREATE INDEX IF NOT EXISTS idx_votes_voter_id ON votes(voter_player_id);
+    `;
+
+    // Execute each statement separately
+    const statements = schemaSQL.split(';').filter(stmt => stmt.trim());
+    statements.forEach(statement => {
+        if (statement.trim()) {
+            db.exec(statement);
+        }
+    });
+}
+
+// Initialize database on startup
+initializeDatabase();
+
+// Prepared statements for better performance
+const statements = {
+    insertGame: db.prepare(`
+        INSERT INTO games (room_code, gm_id, started_at, status)
+        VALUES (?, ?, ?, ?)
+    `),
+    
+    insertPlayer: db.prepare(`
+        INSERT INTO players (socket_id, nickname, game_id, joined_at)
+        VALUES (?, ?, ?, ?)
+    `),
+    
+    insertRound: db.prepare(`
+        INSERT INTO rounds (game_id, round_number, category, started_at)
+        VALUES (?, ?, ?, ?)
+    `),
+    
+    insertSubmission: db.prepare(`
+        INSERT INTO submissions (round_id, player_id, exemplar, submitted_at)
+        VALUES (?, ?, ?, ?)
+    `),
+    
+    insertVote: db.prepare(`
+        INSERT INTO votes (submission_id, voter_player_id, vote, voted_at)
+        VALUES (?, ?, ?, ?)
+    `),
+    
+    updateGameEnd: db.prepare(`
+        UPDATE games SET ended_at = ?, status = 'completed', total_rounds = ?
+        WHERE room_code = ?
+    `),
+    
+    updatePlayerScore: db.prepare(`
+        UPDATE players SET final_score = ? WHERE socket_id = ? AND game_id = ?
+    `),
+    
+    updatePlayerLeft: db.prepare(`
+        UPDATE players SET left_at = ? WHERE socket_id = ? AND game_id = ?
+    `),
+    
+    updateSubmissionResults: db.prepare(`
+        UPDATE submissions SET points_earned = ?, yes_votes = ?, no_votes = ?
+        WHERE round_id = ? AND player_id = ?
+    `),
+    
+    updateRoundTiming: db.prepare(`
+        UPDATE rounds SET submission_ended_at = ?, voting_ended_at = ?, results_shown_at = ?,
+                         total_submissions = ?, total_votes = ?
+        WHERE id = ?
+    `),
+    
+    getGameByRoomCode: db.prepare(`
+        SELECT * FROM games WHERE room_code = ?
+    `),
+    
+    getPlayerBySocket: db.prepare(`
+        SELECT * FROM players WHERE socket_id = ? AND game_id = ?
+    `),
+    
+    getCurrentRound: db.prepare(`
+        SELECT * FROM rounds WHERE game_id = ? ORDER BY round_number DESC LIMIT 1
+    `),
+    
+    getSubmissionByRoundPlayer: db.prepare(`
+        SELECT * FROM submissions WHERE round_id = ? AND player_id = ?
+    `)
+};
+
+// Database helper functions
+function logGameCreated(roomCode, gmSocketId) {
+    try {
+        const result = statements.insertGame.run(roomCode, gmSocketId, new Date().toISOString(), 'waiting');
+        console.log(`DB: Game ${roomCode} created with ID ${result.lastInsertRowid}`);
+        return result.lastInsertRowid;
+    } catch (error) {
+        console.error('DB Error creating game:', error);
+    }
+}
+
+function logPlayerJoined(socketId, nickname, gameId) {
+    try {
+        const result = statements.insertPlayer.run(socketId, nickname, gameId, new Date().toISOString());
+        console.log(`DB: Player ${nickname} (ID ${result.lastInsertRowid}) joined game ${gameId}`);
+        return result.lastInsertRowid;
+    } catch (error) {
+        console.error('DB Error adding player:', error);
+    }
+}
+
+function logRoundStarted(gameId, roundNumber, category) {
+    try {
+        const result = statements.insertRound.run(gameId, roundNumber, category, new Date().toISOString());
+        console.log(`DB: Round ${roundNumber} started in game ${gameId} with category "${category}"`);
+        return result.lastInsertRowid;
+    } catch (error) {
+        console.error('DB Error starting round:', error);
+    }
+}
+
+function logSubmission(roundId, playerId, exemplar) {
+    try {
+        const result = statements.insertSubmission.run(roundId, playerId, exemplar, new Date().toISOString());
+        console.log(`DB: Submission logged for player ${playerId} in round ${roundId}`);
+        return result.lastInsertRowid;
+    } catch (error) {
+        console.error('DB Error logging submission:', error);
+    }
+}
+
+function logVote(submissionId, voterPlayerId, vote) {
+    try {
+        // Convert boolean to integer: true -> 1, false -> 0
+        const voteValue = vote ? 1 : 0;
+        const result = statements.insertVote.run(submissionId, voterPlayerId, voteValue, new Date().toISOString());
+        console.log(`DB: Vote logged - submission ${submissionId}, voter ${voterPlayerId}, vote ${voteValue}`);
+        return result.lastInsertRowid;
+    } catch (error) {
+        console.error('DB Error logging vote:', error);
+    }
+}
+
+function updateGameStatus(roomCode, status, totalRounds = null) {
+    try {
+        if (status === 'completed') {
+            statements.updateGameEnd.run(new Date().toISOString(), status, totalRounds, roomCode);
+        }
+        console.log(`DB: Game ${roomCode} status updated to ${status}`);
+    } catch (error) {
+        console.error('DB Error updating game status:', error);
+    }
+}
+
+function updatePlayerFinalScore(socketId, gameId, score) {
+    try {
+        statements.updatePlayerScore.run(score, socketId, gameId);
+        console.log(`DB: Player ${socketId} final score updated to ${score}`);
+    } catch (error) {
+        console.error('DB Error updating player score:', error);
+    }
+}
+
+function logPlayerLeft(socketId, gameId) {
+    try {
+        statements.updatePlayerLeft.run(new Date().toISOString(), socketId, gameId);
+        console.log(`DB: Player ${socketId} left game ${gameId}`);
+    } catch (error) {
+        console.error('DB Error logging player departure:', error);
+    }
+}
+
+// Export for use in server.js
+module.exports = {
+    db,
+    statements,
+    logGameCreated,
+    logPlayerJoined,
+    logRoundStarted,
+    logSubmission,
+    logVote,
+    updateGameStatus,
+    updatePlayerFinalScore,
+    logPlayerLeft
+};
 
 // Socket connection handling
 io.on('connection', (socket) => {
@@ -51,6 +313,9 @@ io.on('connection', (socket) => {
 
         const room = createRoom(roomCode);
         room.gmSocketId = socket.id;
+
+        room.dbGameId = logGameCreated(roomCode, socket.id);
+
         rooms.set(roomCode, room);
         
         socket.join(roomCode);
@@ -83,12 +348,14 @@ io.on('connection', (socket) => {
 
         // Add player to room
         const playerId = socket.id;
+        const dbPlayerId = logPlayerJoined(socket.id, nickname.trim(), room.dbGameId);
         room.players.set(playerId, {
             nickname: nickname.trim(),
             score: 0,
             socketId: socket.id,
             hasSubmitted: false,
-            hasVoted: false
+            hasVoted: false,
+            dbPlayerId: dbPlayerId
         });
 
         socket.join(roomCode);
@@ -213,6 +480,9 @@ io.on('connection', (socket) => {
         const { category } = data;
         room.currentCategory = category;
         room.gameState = 'submitting';
+
+        room.currentRoundDbId = logRoundStarted(room.dbGameId, room.round, category);
+
         room.submissions = [];
         
         console.log(`Category set to "${category}" in room ${room.code}`); // Debug log
@@ -266,6 +536,8 @@ io.on('connection', (socket) => {
         const { exemplar } = data;
         const player = room.players.get(socket.id);
         
+        const submissionDbId = logSubmission(room.currentRoundDbId, player.dbPlayerId, exemplar.trim());
+
         if (player.hasSubmitted) {
             socket.emit('error', { message: 'Already submitted' });
             return;
@@ -276,7 +548,8 @@ io.on('connection', (socket) => {
             playerId: socket.id,
             nickname: player.nickname,
             exemplar: exemplar.trim(),
-            votes: new Map()
+            votes: new Map(),
+            dbSubmissionId: submissionDbId
         });
 
         player.hasSubmitted = true;
@@ -387,11 +660,14 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Record votes
+        // Record votes with database logging
         Object.entries(votes).forEach(([exemplarIndex, vote]) => {
             const index = parseInt(exemplarIndex);
             if (room.submissions[index]) {
                 room.submissions[index].votes.set(socket.id, vote);
+                
+                // Log to database
+                logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, vote);
             }
         });
 
@@ -447,6 +723,14 @@ socket.on('show-results', () => {
         const submitter = room.players.get(submission.playerId);
         if (submitter) {
             submitter.score += points;
+
+            updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
+
+            statements.updateSubmissionResults.run(
+                points, yesCount, noCount, 
+                room.currentRoundDbId, submitter.dbPlayerId
+            );
+
         }
         
         return {
@@ -688,6 +972,7 @@ socket.on('show-round-scoreboard', () => {
         }
 
         room.gameState = 'ended';
+        updateGameStatus(room.code, 'completed', room.round);
 
         const finalScores = Array.from(room.players.values()).map(p => ({
             nickname: p.nickname,
@@ -728,6 +1013,9 @@ socket.on('show-round-scoreboard', () => {
             } else if (room.players.has(socket.id)) {
                 // Player disconnected
                 const player = room.players.get(socket.id);
+
+                logPlayerLeft(socket.id, room.dbGameId);
+
                 room.players.delete(socket.id);
                 
                 const playerList = Array.from(room.players.values()).map(p => ({
@@ -776,4 +1064,56 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Open http://localhost:${PORT} to start`);
+});
+
+// Data export endpoint for research
+app.get('/export/csv', (req, res) => {
+    try {
+        const { password } = req.query;
+        
+        // Simple password protection (change this!)
+        if (password !== 'research123') {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // Get all data joined for easy CSV export
+        const query = `
+        SELECT 
+            g.room_code,
+            g.created_at as game_start,
+            g.ended_at as game_end,
+            r.round_number,
+            r.category,
+            p.nickname,
+            s.exemplar,
+            s.points_earned,
+            s.yes_votes,
+            s.no_votes,
+            v.vote as voter_choice,
+            voter.nickname as voter_name
+        FROM games g
+        JOIN rounds r ON g.id = r.game_id
+        JOIN submissions s ON r.id = s.round_id
+        JOIN players p ON s.player_id = p.id
+        LEFT JOIN votes v ON s.id = v.submission_id
+        LEFT JOIN players voter ON v.voter_player_id = voter.id
+        ORDER BY g.created_at, r.round_number, s.exemplar, voter.nickname
+        `;
+        
+        const data = db.prepare(query).all();
+        
+        // Convert to CSV
+        const csv = [
+            'room_code,game_start,game_end,round_number,category,submitter,exemplar,points_earned,yes_votes,no_votes,voter_choice,voter_name',
+            ...data.map(row => Object.values(row).map(val => 
+                val === null ? '' : `"${val}"`
+            ).join(','))
+        ].join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="category_game_data.csv"');
+        res.send(csv);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
