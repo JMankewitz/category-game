@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Master - Category Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .room-code {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #667eea;
+            margin: 1rem 0;
+            letter-spacing: 0.2em;
+        }
+
+        .status {
+            padding: 1rem 2rem;
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .players {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .player-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .player {
+            background: #f8f9ff;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #setup {
+            display: block;
+        }
+
+        #waiting {
+            display: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        .game-controls {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .phase-display {
+            background: #e8f4fd;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .category-input {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .vote-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .player-vote-status {
+            background: #f8f9ff;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .player-vote-status.submitted {
+            background: #e8f5e8;
+            color: #2d5a2d;
+        }
+
+        .player-vote-status.waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .display-preview {
+            background: #f8f9ff;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .button.secondary {
+            background: #6c757d;
+        }
+
+        .button.secondary:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Setup Phase -->
+        <div id="setup">
+            <div class="header">
+                <h1>🎮 Game Master</h1>
+                <p>Create a room to start your category game</p>
+                <button id="createRoomBtn" class="button">Create Room</button>
+            </div>
+            
+            <div class="loading hidden">
+                <p>Setting up your room...</p>
+            </div>
+        </div>
+
+        <!-- Waiting for Players Phase -->
+        <div id="waiting">
+            <div class="header">
+                <h1>Room Created!</h1>
+                <p>Players can join with this code:</p>
+                <div class="room-code" id="roomCode"></div>
+                <p>Share this code with your players</p>
+            </div>
+
+            <div class="status">
+                <h3>Game Status</h3>
+                <div class="phase-display" id="currentPhase">Waiting for players to join...</div>
+                <button id="startGameBtn" class="button" disabled>Start Game (Need at least 2 players)</button>
+            </div>
+
+            <div class="game-controls hidden" id="gameControls">
+                <h3>Game Controls</h3>
+                
+                <div id="categorySection" class="hidden">
+                    <label for="categoryInput">Set Category for Round <span id="roundNumber">1</span>:</label>
+                    <input type="text" id="categoryInput" class="category-input" placeholder="e.g., 'furniture', 'things that are red'">
+                    <button id="setCategoryBtn" class="button">Set Category & Start Submissions</button>
+                </div>
+
+                <div id="submissionSection" class="hidden">
+                    <p>Players are submitting exemplars for: <strong id="currentCategory"></strong></p>
+                    <div class="vote-status" id="submissionStatus"></div>
+                    <button id="startVotingBtn" class="button">Start Voting Phase</button>
+                </div>
+
+                <div id="votingSection" class="hidden">
+                    <p>Players are voting on all exemplars</p>
+                    <div class="vote-status" id="votingStatus"></div>
+                    <button id="showResultsBtn" class="button">Show Results</button>
+                </div>
+                
+                <div id="resultsSection" class="hidden">
+                    <div id="resultsNavigation" class="hidden">
+                        <p>Navigate through exemplar results:</p>
+                        <div style="display: flex; gap: 1rem; align-items: center; margin: 1rem 0;">
+                            <button id="prevResultBtn" class="button secondary" disabled>← Previous</button>
+                            <span id="resultProgress">0 / 0</span>
+                            <button id="nextResultBtn" class="button">Next →</button>
+                        </div>
+                        <p id="currentResultInfo" style="margin: 1rem 0; font-style: italic;"></p>
+                    </div>
+                    
+                    <div id="summaryControls" class="hidden">
+                        <p>All exemplars shown. Show summary:</p>
+                        <button id="showSummaryBtn" class="button">Show Most/Least Controversial</button>
+                    </div>
+                    
+                    <div id="scoreboardControls" class="hidden">
+                        <p>Summary shown. Show round results:</p>
+                        <button id="showScoreboardBtn" class="button">Show Round Scoreboard</button>
+                    </div>
+                    
+                    <div id="finalControls" class="hidden">
+                        <p>Round complete!</p>
+                        <button id="nextRoundBtn" class="button">Next Round</button>
+                        <button id="endGameBtn" class="button secondary">End Game</button>
+                    </div>
+                </div>
+
+                <div class="display-preview">
+                    <h4>Display Preview</h4>
+                    <p id="displayPreview">Players will see the main display on the projector</p>
+                </div>
+            </div>
+
+            <div class="players">
+                <h3>Players (<span id="playerCount">0</span>)</h3>
+                <div id="playerList" class="player-list">
+                    <p class="loading">No players yet...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let roomCode = null;
+
+        // DOM elements
+        const setupDiv = document.getElementById('setup');
+        const waitingDiv = document.getElementById('waiting');
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const roomCodeDisplay = document.getElementById('roomCode');
+        const playerCountDisplay = document.getElementById('playerCount');
+        const playerListDiv = document.getElementById('playerList');
+        const currentPhaseDisplay = document.getElementById('currentPhase');
+        const gameControlsDiv = document.getElementById('gameControls');
+        
+        // Game control elements
+        const categorySection = document.getElementById('categorySection');
+        const submissionSection = document.getElementById('submissionSection');
+        const votingSection = document.getElementById('votingSection');
+        const resultsSection = document.getElementById('resultsSection');
+        const categoryInput = document.getElementById('categoryInput');
+        const setCategoryBtn = document.getElementById('setCategoryBtn');
+        const startVotingBtn = document.getElementById('startVotingBtn');
+        const showResultsBtn = document.getElementById('showResultsBtn');
+        const nextRoundBtn = document.getElementById('nextRoundBtn');
+        const endGameBtn = document.getElementById('endGameBtn');
+        const roundNumber = document.getElementById('roundNumber');
+        const currentCategory = document.getElementById('currentCategory');
+        const submissionStatus = document.getElementById('submissionStatus');
+        const votingStatus = document.getElementById('votingStatus');
+        const displayPreview = document.getElementById('displayPreview');
+
+        const resultsNavigation = document.getElementById('resultsNavigation');
+        const summaryControls = document.getElementById('summaryControls');
+        const scoreboardControls = document.getElementById('scoreboardControls');
+        const finalControls = document.getElementById('finalControls');
+        const prevResultBtn = document.getElementById('prevResultBtn');
+        const nextResultBtn = document.getElementById('nextResultBtn');
+        const resultProgress = document.getElementById('resultProgress');
+        const currentResultInfo = document.getElementById('currentResultInfo');
+        const showSummaryBtn = document.getElementById('showSummaryBtn');
+        const showScoreboardBtn = document.getElementById('showScoreboardBtn');
+
+        // Create room
+        createRoomBtn.addEventListener('click', () => {
+            createRoomBtn.disabled = true;
+            createRoomBtn.textContent = 'Creating...';
+            socket.emit('create-room');
+        });
+
+        // Start game
+        startGameBtn.addEventListener('click', () => {
+            socket.emit('start-game');
+        });
+
+        // Set category
+        setCategoryBtn.addEventListener('click', () => {
+            const category = categoryInput.value.trim();
+            if (!category) {
+                alert('Please enter a category');
+                return;
+            }
+            socket.emit('set-category', { category });
+        });
+
+        // Start voting
+        startVotingBtn.addEventListener('click', () => {
+            socket.emit('start-voting');
+        });
+
+        // Show results
+        showResultsBtn.addEventListener('click', () => {
+            socket.emit('show-results');
+        });
+
+        // Next round
+        nextRoundBtn.addEventListener('click', () => {
+            socket.emit('next-round');
+        });
+        prevResultBtn.addEventListener('click', () => {
+            socket.emit('show-prev-result');
+        });
+
+        nextResultBtn.addEventListener('click', () => {
+            socket.emit('show-next-result');
+        });
+
+        showSummaryBtn.addEventListener('click', () => {
+            socket.emit('show-final-summary');
+        });
+
+        showScoreboardBtn.addEventListener('click', () => {
+            socket.emit('show-round-scoreboard');
+        });
+        // End game
+        endGameBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to end the game?')) {
+                socket.emit('end-game');
+            }
+        });
+
+        // Socket events
+        socket.on('room-created', (data) => {
+            roomCode = data.roomCode;
+            roomCodeDisplay.textContent = roomCode;
+            setupDiv.style.display = 'none';
+            waitingDiv.style.display = 'block';
+            console.log('Room created:', roomCode);
+        });
+
+        socket.on('room-update', (data) => {
+            updatePlayerList(data.players);
+            updatePlayerCount(data.playerCount);
+            
+            // Enable start button if we have at least 2 players
+            if (data.playerCount >= 2) {
+                startGameBtn.disabled = false;
+                startGameBtn.textContent = 'Start Game';
+            } else {
+                startGameBtn.disabled = true;
+                startGameBtn.textContent = 'Start Game (Need at least 2 players)';
+            }
+        });
+
+        socket.on('game-started', (data) => {
+            console.log('Game started:', data);
+            currentPhaseDisplay.textContent = 'Game Active - Set first category';
+            gameControlsDiv.classList.remove('hidden');
+            categorySection.classList.remove('hidden');
+            startGameBtn.style.display = 'none';
+            displayPreview.textContent = 'Display shows: Waiting for first category';
+        });
+
+        socket.on('results-ready', (data) => {
+            console.log('Results ready:', data);
+            currentPhaseDisplay.textContent = 'Results ready - navigate through exemplars';
+            
+            // Show navigation controls
+            resultsNavigation.classList.remove('hidden');
+            summaryControls.classList.add('hidden');
+            scoreboardControls.classList.add('hidden');
+            finalControls.classList.add('hidden');
+            
+            // Update progress
+            resultProgress.textContent = `0 / ${data.totalResults}`;
+            currentResultInfo.textContent = 'Click "Next" to show first exemplar result';
+            
+            // Enable next button
+            nextResultBtn.disabled = false;
+            prevResultBtn.disabled = true;
+            
+            displayPreview.textContent = 'Display shows: Waiting for first result...';
+        });
+
+        socket.on('result-navigation', (data) => {
+            console.log('Result navigation:', data);
+            
+            // Update progress
+            resultProgress.textContent = `${data.currentIndex + 1} / ${data.totalResults}`;
+            currentResultInfo.textContent = `Showing exemplar ${data.currentIndex + 1}`;
+            
+            // Update button states
+            prevResultBtn.disabled = !data.canGoPrev;
+            nextResultBtn.disabled = !data.canGoNext;
+            
+            // If this was the last result, show summary controls
+            if (!data.canGoNext) {
+                summaryControls.classList.remove('hidden');
+                currentResultInfo.textContent = `All ${data.totalResults} exemplars shown. Ready for summary.`;
+            }
+            
+            displayPreview.textContent = `Display shows: Exemplar ${data.currentIndex + 1} voting results`;
+        });
+
+        socket.on('summary-shown', () => {
+            console.log('Summary shown');
+            currentPhaseDisplay.textContent = 'Controversy summary displayed';
+            summaryControls.classList.add('hidden');
+            scoreboardControls.classList.remove('hidden');
+            displayPreview.textContent = 'Display shows: Most/least controversial exemplars';
+        });
+
+        socket.on('scoreboard-shown', () => {
+            console.log('Scoreboard shown');
+            currentPhaseDisplay.textContent = 'Round scoreboard displayed';
+            scoreboardControls.classList.add('hidden');
+            finalControls.classList.remove('hidden');
+            displayPreview.textContent = 'Display shows: Round scoreboard';
+        });
+
+        socket.on('game-state-update', (data) => {
+            updateGamePhase(data.gameState, data);
+        });
+
+        // Helper functions
+        function updatePlayerCount(count) {
+            playerCountDisplay.textContent = count;
+        }
+
+        function updatePlayerList(players) {
+            if (players.length === 0) {
+                playerListDiv.innerHTML = '<p class="loading">No players yet...</p>';
+                return;
+            }
+
+            playerListDiv.innerHTML = players.map(player => `
+                <div class="player">
+                    <strong>${player.nickname}</strong><br>
+                    <small>Score: ${player.score}</small>
+                </div>
+            `).join('');
+        }
+
+        function updateGamePhase(gameState, data) {
+            // Hide all sections first
+            [categorySection, submissionSection, votingSection, resultsSection].forEach(section => {
+                section.classList.add('hidden');
+            });
+
+            switch(gameState) {
+                case 'waiting-for-category':
+                    currentPhaseDisplay.textContent = 'Set category for round ' + (data.round || 1);
+                    categorySection.classList.remove('hidden');
+                    roundNumber.textContent = data.round || 1;
+                    displayPreview.textContent = 'Display shows: Waiting for category';
+                    break;
+                    
+                case 'submitting':
+                    currentPhaseDisplay.textContent = 'Players submitting exemplars';
+                    submissionSection.classList.remove('hidden');
+                    currentCategory.textContent = data.currentCategory;
+                    updateSubmissionStatus(data.players);
+                    displayPreview.textContent = `Display shows: Submit exemplars for "${data.currentCategory}"`;
+                    break;
+                    
+                case 'voting':
+                    currentPhaseDisplay.textContent = 'Players voting on exemplars';
+                    votingSection.classList.remove('hidden');
+                    updateVotingStatus(data.players);
+                    displayPreview.textContent = 'Display shows: Vote on all exemplars';
+                    break;
+                    
+                case 'results':
+                    currentPhaseDisplay.textContent = 'Preparing results...';
+                    resultsSection.classList.remove('hidden');
+                    // Hide all sub-controls initially - they'll be shown by results-ready event
+                    resultsNavigation.classList.add('hidden');
+                    summaryControls.classList.add('hidden');
+                    scoreboardControls.classList.add('hidden');
+                    finalControls.classList.add('hidden');
+                    displayPreview.textContent = 'Display shows: Calculating results...';
+                    break;
+            }
+        }
+
+        function updateSubmissionStatus(players) {
+            const statusHtml = players.map(player => {
+                const hasSubmitted = player.hasSubmitted ? 'submitted' : 'waiting';
+                const statusText = player.hasSubmitted ? 'Submitted' : 'Waiting...';
+                return `
+                    <div class="player-vote-status ${hasSubmitted}">
+                        ${player.nickname}<br>
+                        <small>${statusText}</small>
+                    </div>
+                `;
+            }).join('');
+            submissionStatus.innerHTML = statusHtml;
+        }
+
+        function updateVotingStatus(players) {
+            const statusHtml = players.map(player => {
+                const hasVoted = player.hasVoted ? 'submitted' : 'waiting';
+                const statusText = player.hasVoted ? 'Voted' : 'Voting...';
+                return `
+                    <div class="player-vote-status ${hasVoted}">
+                        ${player.nickname}<br>
+                        <small>${statusText}</small>
+                    </div>
+                `;
+            }).join('');
+            votingStatus.innerHTML = statusHtml;
+        }
+
+        // Handle connection errors
+        socket.on('connect_error', () => {
+            alert('Connection error. Please refresh the page.');
+        });
+    </script>
+</body>
+</html>

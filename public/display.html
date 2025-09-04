@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Category Game - Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            overflow: hidden;
+        }
+
+        .main-content {
+            text-align: center;
+            max-width: 90vw;
+            width: 100%;
+        }
+
+        .room-code {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            background: rgba(255,255,255,0.2);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+        }
+
+        .game-title {
+            font-size: 4rem;
+            font-weight: 800;
+            margin-bottom: 2rem;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .category-display {
+            font-size: 6rem;
+            font-weight: 700;
+            margin: 2rem 0;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            line-height: 1.2;
+        }
+
+        .phase-message {
+            font-size: 2.5rem;
+            margin: 2rem 0;
+            opacity: 0.9;
+        }
+
+        .submission-counter {
+            font-size: 1.8rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.2);
+            padding: 1rem 2rem;
+            border-radius: 15px;
+            margin: 1rem auto;
+            max-width: 400px;
+        }
+
+        .vote-counter {
+            font-size: 3rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.2);
+            padding: 2rem;
+            border-radius: 20px;
+            margin: 2rem auto;
+            max-width: 600px;
+        }
+
+        /* Voting visualization */
+        .voting-arena {
+            position: relative;
+            width: 80vw;
+            height: 60vh;
+            margin: 2rem auto;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.1);
+            overflow: hidden;
+            display: flex;
+        }
+
+        .vote-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 2rem;
+        }
+
+        .vote-side.yes {
+            background: rgba(40, 167, 69, 0.3);
+            border-right: 3px solid rgba(255,255,255,0.3);
+        }
+
+        .vote-side.no {
+            background: rgba(220, 53, 69, 0.3);
+        }
+
+        .vote-label {
+            font-size: 4rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .vote-count {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-top: 1rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .player-circle {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: white;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #333;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+
+        .player-circle.animating {
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        /* Controversy Summary */
+        .controversy-container {
+            display: flex;
+            gap: 3rem;
+            justify-content: center;
+            max-width: 90vw;
+            margin: 0 auto;
+        }
+
+        .controversy-section {
+            flex: 1;
+            max-width: 500px;
+        }
+
+        .controversy-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .controversy-title.most {
+            color: #ff6b6b;
+        }
+
+        .controversy-title.least {
+            color: #4ecdc4;
+        }
+
+        .controversy-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .controversy-item {
+            background: rgba(255,255,255,0.15);
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+            animation: slideIn 0.6s ease-out;
+        }
+
+        .controversy-exemplar {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .controversy-split {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .controversy-points {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #ffd700;
+            margin-top: 0.5rem;
+        }
+
+        /* Scoreboard */
+        .scoreboard {
+            background: rgba(255,255,255,0.15);
+            border-radius: 20px;
+            padding: 3rem;
+            margin: 2rem auto;
+            max-width: 800px;
+        }
+
+        .scoreboard-title {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .score-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            margin: 0.5rem 0;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            font-size: 1.8rem;
+        }
+
+        .score-rank {
+            font-weight: 700;
+            margin-right: 1rem;
+            color: #ffd700;
+        }
+        
+        .controversy-section.full-width {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .controversy-rank {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffd700;
+            margin-bottom: 0.3rem;
+        }
+
+        .final-score {
+            background: linear-gradient(45deg, rgba(255,215,0,0.1), rgba(255,255,255,0.1));
+            border: 2px solid rgba(255,215,0,0.3);
+        }
+
+        .final-score:first-child {
+            background: linear-gradient(45deg, rgba(255,215,0,0.2), rgba(255,255,255,0.15));
+            border: 2px solid rgba(255,215,0,0.5);
+            box-shadow: 0 0 20px rgba(255,215,0,0.3);
+        }
+        .hidden {
+            display: none;
+        }
+
+        /* Player bubbles for waiting screen */
+        .players-waiting {
+            margin-top: 3rem;
+            max-width: 80vw;
+        }
+
+        .waiting-subtitle {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .player-bubbles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            margin: 0 auto;
+            max-width: 800px;
+        }
+
+        .player-bubble {
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            padding: 1rem 1.5rem;
+            border-radius: 50px;
+            font-size: 1.3rem;
+            font-weight: 600;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s ease;
+        }
+
+        .player-bubble.new {
+            transform: scale(0);
+            animation: bubblePop 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards,
+                       glow 1s ease-in-out;
+        }
+
+        .player-bubble.existing {
+            /* Existing bubbles just use the transition for smooth movement */
+        }
+
+        @keyframes bubblePop {
+            0% {
+                transform: scale(0) rotate(0deg);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.2) rotate(180deg);
+            }
+            100% {
+                transform: scale(1) rotate(360deg);
+                opacity: 1;
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                left: -100%;
+            }
+            100% {
+                left: 100%;
+            }
+        }
+
+        @keyframes glow {
+            0%, 100% {
+                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            }
+            50% {
+                box-shadow: 0 8px 30px rgba(102, 126, 234, 0.4),
+                           0 0 0 3px rgba(102, 126, 234, 0.3);
+            }
+        }
+
+        .no-players-message {
+            font-size: 1.5rem;
+            opacity: 0.7;
+            font-style: italic;
+        }
+
+        /* Animations */
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-20px);
+            }
+            60% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .bounce {
+            animation: bounce 1s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .slide-in {
+            animation: slideIn 0.6s ease-out;
+        }
+
+        @media (max-width: 768px) {
+            .controversy-container {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            
+            .voting-arena {
+                height: 50vh;
+            }
+            
+            .vote-count {
+                width: 80px;
+                height: 80px;
+                font-size: 2rem;
+            }
+
+            .game-title {
+                font-size: 2.5rem;
+            }
+
+            .category-display {
+                font-size: 3rem;
+            }
+
+            .phase-message {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="room-code" id="roomCode">XXXX</div>
+    
+    <div class="main-content">
+        <!-- Waiting for room connection -->
+        <div id="waitingScreen">
+            <div class="game-title">Category Game</div>
+            <div class="phase-message" id="waitingMessage">Waiting for game to start...</div>
+            
+            <!-- Player bubbles container -->
+            <div class="players-waiting" id="playersWaiting">
+                <div class="waiting-subtitle">Players Joined:</div>
+                <div class="player-bubbles" id="playerBubbles">
+                    <!-- Player bubbles will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Category display phase -->
+        <div id="categoryScreen" class="hidden">
+            <div class="phase-message">Current Category</div>
+            <div class="category-display" id="categoryText">"Furniture"</div>
+            <div class="phase-message" id="phaseMessage">Players are submitting exemplars...</div>
+            <div class="submission-counter" id="submissionCounter">0 / 8 players have submitted</div>
+        </div>
+
+        <!-- Voting counter -->
+        <div id="votingScreen" class="hidden">
+            <div class="phase-message">Voting for Category:</div>
+            <div class="category-display" id="votingCategoryDisplay">"Furniture"</div>
+            <div class="phase-message">Voting in Progress</div>
+            <div class="vote-counter" id="voteCounter">5 / 8 players have voted</div>
+        </div>
+
+        <!-- Individual Exemplar Results -->
+        <div id="resultsScreen" class="hidden">
+            <div class="phase-message">
+                <span id="resultProgress">Result 1 of 5</span>
+            </div>
+            <div class="phase-message">
+                <span id="currentExemplar">"Chair"</span>
+            </div>
+            
+            <div class="voting-arena" id="votingArena">
+                <div class="vote-side yes">
+                    <div class="vote-label">👍 YES</div>
+                    <div class="vote-count" id="yesCount">0</div>
+                </div>
+                <div class="vote-side no">
+                    <div class="vote-label">👎 NO</div>
+                    <div class="vote-count" id="noCount">0</div>
+                </div>
+            </div>
+            
+            <div class="vote-counter" id="splitDisplay">Split: 6 YES, 2 NO (2 points)</div>
+        </div>
+
+        <!-- Controversy Summary -->
+        <div id="controversySummary" class="hidden">
+            <div class="phase-message">Most & Least Controversial</div>
+            <div class="controversy-container">
+                <div class="controversy-section">
+                    <h3 class="controversy-title most">🔥 Most Controversial</h3>
+                    <div id="mostControversialList" class="controversy-list">
+                        <!-- Most controversial items -->
+                    </div>
+                </div>
+                <div class="controversy-section">
+                    <h3 class="controversy-title least">❄️ Least Controversial</h3>
+                    <div id="leastControversialList" class="controversy-list">
+                        <!-- Least controversial items -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Round Scoreboard -->
+        <div id="roundScoreboard" class="hidden">
+            <div class="phase-message">Round <span id="scoreboardRound">1</span> Results</div>
+            <div class="scoreboard">
+                <div id="scoreboardList">
+                    <!-- Scores will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Legacy summary results (kept for backwards compatibility) -->
+        <div id="summaryScreen" class="hidden">
+            <div class="phase-message">Round Results</div>
+            <div class="results-container" id="summaryResults">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+
+        <!-- Legacy scoreboard (kept for backwards compatibility) -->
+        <div id="scoreboardScreen" class="hidden">
+            <div class="scoreboard">
+                <div class="scoreboard-title">Leaderboard</div>
+                <div id="scoreboardList">
+                    <!-- Scores will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let currentRoomCode = null;
+        let playerCircles = [];
+
+        // DOM elements
+        const roomCodeDisplay = document.getElementById('roomCode');
+        const waitingScreen = document.getElementById('waitingScreen');
+        const categoryScreen = document.getElementById('categoryScreen');
+        const votingScreen = document.getElementById('votingScreen');
+        const resultsScreen = document.getElementById('resultsScreen');
+        const summaryScreen = document.getElementById('summaryScreen');
+        const scoreboardScreen = document.getElementById('scoreboardScreen');
+        const controversySummary = document.getElementById('controversySummary');
+        const roundScoreboard = document.getElementById('roundScoreboard');
+        
+        const categoryText = document.getElementById('categoryText');
+        const phaseMessage = document.getElementById('phaseMessage');
+        const submissionCounter = document.getElementById('submissionCounter');
+        const voteCounter = document.getElementById('voteCounter');
+        const currentExemplar = document.getElementById('currentExemplar');
+        const votingArena = document.getElementById('votingArena');
+        const splitDisplay = document.getElementById('splitDisplay');
+        const summaryResults = document.getElementById('summaryResults');
+        const scoreboardList = document.getElementById('scoreboardList');
+        const waitingMessage = document.getElementById('waitingMessage');
+        const playersWaiting = document.getElementById('playersWaiting');
+        const playerBubbles = document.getElementById('playerBubbles');
+
+        // New enhanced results elements
+        const resultProgress = document.getElementById('resultProgress');
+        const yesCount = document.getElementById('yesCount');
+        const noCount = document.getElementById('noCount');
+        const mostControversialList = document.getElementById('mostControversialList');
+        const leastControversialList = document.getElementById('leastControversialList');
+        const scoreboardRound = document.getElementById('scoreboardRound');
+
+        const votingCategoryDisplay = document.getElementById('votingCategoryDisplay');
+
+        // Connect to a room (URL parameter or prompt)
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomCode = urlParams.get('room') || prompt('Enter room code to display:');
+            
+            if (roomCode) {
+                currentRoomCode = roomCode.toUpperCase();
+                roomCodeDisplay.textContent = currentRoomCode;
+                waitingMessage.textContent = 'Connecting to game room...';
+                socket.emit('join-display', { roomCode: currentRoomCode });
+            } else {
+                waitingMessage.textContent = 'No room code provided';
+            }
+        });
+
+        // Socket events
+        socket.on('display-connected', (data) => {
+            console.log('Display connected to room:', data.roomCode);
+            showScreen('waiting');
+        });
+
+        socket.on('display-update', (data) => {
+            updateDisplay(data);
+        });
+
+        socket.on('player-joined', (data) => {
+            addPlayerBubble(data.nickname, true);
+        });
+
+        socket.on('player-left', (data) => {
+            removePlayerBubble(data.nickname);
+        });
+
+        // Enhanced results event handlers
+        socket.on('results-mode-start', (data) => {
+            console.log('Results mode starting:', data);
+            showScreen('waiting');
+            waitingMessage.textContent = 'Results incoming...';
+        });
+
+        socket.on('show-exemplar-result', (data) => {
+            console.log('Showing exemplar result:', data);
+            showExemplarResultEnhanced(data);
+        });
+
+        socket.on('show-controversy-summary', (data) => {
+            console.log('Showing controversy summary:', data);
+            showControversySummary(data);
+        });
+
+        socket.on('show-round-scoreboard', (data) => {
+            console.log('Showing round scoreboard:', data);
+            showRoundScoreboard(data);
+        });
+
+        // Legacy event handlers (kept for backwards compatibility)
+        socket.on('show-summary', (data) => {
+            showSummary(data);
+        });
+
+        socket.on('show-enhanced-summary', (data) => {
+            console.log('Showing enhanced summary:', data);
+            showEnhancedSummary(data);
+        });
+
+        socket.on('show-scoreboard', (data) => {
+            showScoreboard(data);
+        });
+
+        // Display management functions
+        function showScreen(screen) {
+            [waitingScreen, categoryScreen, votingScreen, resultsScreen, 
+             summaryScreen, scoreboardScreen, controversySummary, roundScoreboard].forEach(s => {
+                s.classList.add('hidden');
+            });
+
+            switch(screen) {
+                case 'waiting':
+                    waitingScreen.classList.remove('hidden');
+                    break;
+                case 'category':
+                    categoryScreen.classList.remove('hidden');
+                    break;
+                case 'voting':
+                    votingScreen.classList.remove('hidden');
+                    break;
+                case 'results':
+                    resultsScreen.classList.remove('hidden');
+                    break;
+                case 'summary':
+                    summaryScreen.classList.remove('hidden');
+                    break;
+                case 'scoreboard':
+                    scoreboardScreen.classList.remove('hidden');
+                    break;
+                case 'controversySummary':
+                    controversySummary.classList.remove('hidden');
+                    break;
+                case 'roundScoreboard':
+                    roundScoreboard.classList.remove('hidden');
+                    break;
+            }
+        }
+
+        function updateDisplay(data) {
+            switch(data.gameState) {
+                case 'waiting':
+                    showScreen('waiting');
+                    waitingMessage.textContent = 'Waiting for players to join...';
+                    playersWaiting.style.display = 'block';
+                    if (data.players && playerBubbles.children.length === 0) {
+                        populateInitialBubbles(data.players);
+                    }
+                    break;
+                    
+                case 'waiting-for-category':
+                    showScreen('category');
+                    categoryText.textContent = 'Waiting for category...';
+                    phaseMessage.textContent = 'Game Master is setting up the next round';
+                    submissionCounter.style.display = 'none';
+                    break;
+                    
+                case 'submitting':
+                    showScreen('category');
+                    if (data.currentCategory) {
+                        categoryText.textContent = `"${data.currentCategory}"`;
+                        phaseMessage.textContent = 'Players are submitting exemplars...';
+                        submissionCounter.style.display = 'block';
+                        updateSubmissionCounter(data.submittedCount || 0, data.totalPlayers);
+                    } else {
+                        categoryText.textContent = 'Waiting for category...';
+                        phaseMessage.textContent = 'Game Master is setting up the category';
+                        submissionCounter.style.display = 'none';
+                    }
+                    break;
+                    
+                case 'voting':
+                    showScreen('voting');
+                    // Always update the category display when entering voting phase
+                    if (data.currentCategory) {
+                        votingCategoryDisplay.textContent = `"${data.currentCategory}"`;
+                        console.log('Updated voting category display to:', data.currentCategory);
+                    } else {
+                        console.warn('No currentCategory in voting phase data:', data);
+                    }
+                    updateVoteCounter(data.votedCount || 0, data.totalPlayers);
+                    break;
+                    
+                case 'results':
+                    // Enhanced results mode - waiting for GM to step through
+                    showScreen('waiting');
+                    waitingMessage.textContent = 'Preparing results...';
+                    break;
+                    
+                default:
+                    showScreen('waiting');
+                    waitingMessage.textContent = 'Waiting for game to start...';
+                    playersWaiting.style.display = 'block';
+                    break;
+            }
+        }
+
+        // Enhanced exemplar result display
+        function showExemplarResultEnhanced(data) {
+            showScreen('results');
+            
+            // Update progress and exemplar text
+            resultProgress.textContent = `Result ${data.currentIndex + 1} of ${data.totalResults}`;
+            currentExemplar.textContent = `"${data.exemplar}"`;
+            
+            // Update vote counts
+            yesCount.textContent = data.yesCount;
+            noCount.textContent = data.noCount;
+            
+            // Update split display
+            splitDisplay.textContent = `Split: ${data.yesCount} YES, ${data.noCount} NO (${data.points} points)`;
+            
+            // Create and animate player circles
+            createAndAnimatePlayerCircles(data.votes);
+        }
+
+        function createAndAnimatePlayerCircles(votes) {
+            // Clear existing circles
+            votingArena.querySelectorAll('.player-circle').forEach(circle => circle.remove());
+            
+            // Create circles starting in center
+            const circles = votes.map((vote, index) => {
+                const circle = document.createElement('div');
+                circle.className = 'player-circle';
+                circle.textContent = index + 1;
+                
+                // Start in center
+                circle.style.left = '50%';
+                circle.style.top = '50%';
+                circle.style.transform = 'translate(-50%, -50%)';
+                
+                votingArena.appendChild(circle);
+                return { element: circle, vote: vote.vote };
+            });
+            
+            // Animate to sides after a brief delay
+            setTimeout(() => {
+                animateCirclesToSides(circles);
+            }, 800);
+        }
+
+        function animateCirclesToSides(circles) {
+            const arena = votingArena.getBoundingClientRect();
+            const yesArea = votingArena.querySelector('.vote-side.yes').getBoundingClientRect();
+            const noArea = votingArena.querySelector('.vote-side.no').getBoundingClientRect();
+            
+            const yesCircles = circles.filter(c => c.vote);
+            const noCircles = circles.filter(c => !c.vote);
+            
+            // Animate YES circles
+            yesCircles.forEach((circle, index) => {
+                setTimeout(() => {
+                    const cols = Math.ceil(Math.sqrt(yesCircles.length));
+                    const row = Math.floor(index / cols);
+                    const col = index % cols;
+                    
+                    const x = (col + 1) * (yesArea.width / (cols + 1));
+                    const y = (row + 1) * (yesArea.height / (Math.ceil(yesCircles.length / cols) + 1));
+                    
+                    circle.element.classList.add('animating');
+                    circle.element.style.left = x + 'px';
+                    circle.element.style.top = y + 'px';
+                    
+                    // Remove animation class after completion
+                    setTimeout(() => {
+                        circle.element.classList.remove('animating');
+                    }, 1200);
+                }, index * 150);
+            });
+            
+            // Animate NO circles
+            noCircles.forEach((circle, index) => {
+                setTimeout(() => {
+                    const cols = Math.ceil(Math.sqrt(noCircles.length));
+                    const row = Math.floor(index / cols);
+                    const col = index % cols;
+                    
+                    const x = arena.width / 2 + (col + 1) * (noArea.width / (cols + 1));
+                    const y = (row + 1) * (noArea.height / (Math.ceil(noCircles.length / cols) + 1));
+                    
+                    circle.element.classList.add('animating');
+                    circle.element.style.left = x + 'px';
+                    circle.element.style.top = y + 'px';
+                    
+                    // Remove animation class after completion
+                    setTimeout(() => {
+                        circle.element.classList.remove('animating');
+                    }, 1200);
+                }, index * 150);
+            });
+        }
+
+        function showEnhancedSummary(data) {
+            showScreen('controversySummary');
+            
+            // Update the title
+            document.querySelector('#controversySummary .phase-message').textContent = data.title;
+            
+            if (data.showAll) {
+                // Show all exemplars in a single column
+                mostControversialList.innerHTML = '';
+                
+                // Update the section title
+                document.querySelector('.controversy-title.most').textContent = '🎯 All Exemplars';
+                document.querySelector('.controversy-section').classList.add('full-width');
+                
+                // Hide the least controversial section
+                document.querySelector('.controversy-section:last-child').style.display = 'none';
+                
+                // Populate all results
+                mostControversialList.innerHTML = data.allResults.map((item, index) => `
+                    <div class="controversy-item" style="animation-delay: ${index * 0.1}s">
+                        <div class="controversy-rank">#${index + 1}</div>
+                        <div class="controversy-exemplar">"${item.exemplar}"</div>
+                        <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
+                        <div class="controversy-points">${item.points} points</div>
+                    </div>
+                `).join('');
+                
+            } else {
+                // Show top 3 and bottom 3
+                document.querySelector('.controversy-title.most').textContent = '🏆 Top Scoring';
+                document.querySelector('.controversy-title.least').textContent = '🎲 Lowest Scoring';
+                document.querySelector('.controversy-section').classList.remove('full-width');
+                document.querySelector('.controversy-section:last-child').style.display = 'block';
+                
+                // Populate top results
+                mostControversialList.innerHTML = data.topResults.map((item, index) => `
+                    <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
+                        <div class="controversy-rank">#${index + 1}</div>
+                        <div class="controversy-exemplar">"${item.exemplar}"</div>
+                        <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
+                        <div class="controversy-points">${item.points} points</div>
+                    </div>
+                `).join('');
+                
+                // Populate bottom results (show their actual ranks)
+                const totalResults = data.topResults.length + data.bottomResults.length + (data.bottomResults.length > 3 ? 0 : 0);
+                leastControversialList.innerHTML = data.bottomResults.map((item, index) => {
+                    const actualRank = totalResults - data.bottomResults.length + index + 1;
+                    return `
+                        <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
+                            <div class="controversy-rank">#${actualRank}</div>
+                            <div class="controversy-exemplar">"${item.exemplar}"</div>
+                            <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
+                            <div class="controversy-points">${item.points} points</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function showControversySummary(data) {
+            showScreen('controversySummary');
+            
+            // Populate most controversial
+            mostControversialList.innerHTML = data.mostControversial.map((item, index) => `
+                <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
+                    <div class="controversy-exemplar">"${item.exemplar}"</div>
+                    <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
+                    <div class="controversy-points">${item.points} points</div>
+                </div>
+            `).join('');
+            
+            // Populate least controversial
+            leastControversialList.innerHTML = data.leastControversial.map((item, index) => `
+                <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
+                    <div class="controversy-exemplar">"${item.exemplar}"</div>
+                    <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
+                    <div class="controversy-points">${item.points} points</div>
+                </div>
+            `).join('');
+        }
+
+       function showRoundScoreboard(data) {
+            showScreen('roundScoreboard');
+            
+            // Update title based on whether this is final game results or round results
+            let titleText;
+            if (data.isFinal) {
+                titleText = `🏆 Final Game Results 🏆`;
+            } else if (data.isGameWide) {
+                titleText = `Total Scores After Round ${data.round}`;
+            } else {
+                titleText = `Round ${data.round} Results`;
+            }
+            
+            document.querySelector('#roundScoreboard .phase-message').innerHTML = titleText;
+            
+            const scoresHtml = data.players.map((player, index) => {
+                // Add special styling for final game podium positions
+                let rankEmoji = '';
+                if (data.isFinal) {
+                    if (index === 0) rankEmoji = '🥇 ';
+                    else if (index === 1) rankEmoji = '🥈 ';
+                    else if (index === 2) rankEmoji = '🥉 ';
+                }
+                
+                return `
+                    <div class="score-item slide-in ${data.isFinal ? 'final-score' : ''}" style="animation-delay: ${index * 0.1}s">
+                        <div>
+                            <span class="score-rank">${rankEmoji}#${index + 1}</span>
+                            ${player.nickname}
+                        </div>
+                        <div>${player.score} points</div>
+                    </div>
+                `;
+            }).join('');
+            
+            scoreboardList.innerHTML = scoresHtml;
+        }
+
+        function populateInitialBubbles(players) {
+            if (!players || players.length === 0) {
+                playerBubbles.innerHTML = '<div class="no-players-message">No players yet...</div>';
+                return;
+            }
+
+            playerBubbles.innerHTML = '';
+            players.forEach((player, index) => {
+                setTimeout(() => {
+                    addPlayerBubble(player.nickname, false);
+                }, index * 100);
+            });
+        }
+
+        function addPlayerBubble(nickname, isNew = false) {
+            // Check if bubble already exists
+            if (document.querySelector(`[data-nickname="${nickname}"]`)) {
+                return;
+            }
+
+            // Remove "no players" message if it exists
+            const noPlayersMsg = playerBubbles.querySelector('.no-players-message');
+            if (noPlayersMsg) {
+                noPlayersMsg.remove();
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = `player-bubble ${isNew ? 'new' : 'existing'}`;
+            bubble.textContent = nickname;
+            bubble.setAttribute('data-nickname', nickname);
+            
+            const shimmer = document.createElement('div');
+            shimmer.style.cssText = `
+                position: absolute;
+                top: 0;
+                left: -100%;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+                animation: shimmer 2s ease-in-out infinite;
+                pointer-events: none;
+            `;
+            bubble.appendChild(shimmer);
+            
+            playerBubbles.appendChild(bubble);
+            
+            if (isNew) {
+                setTimeout(() => {
+                    bubble.classList.remove('new');
+                    bubble.classList.add('existing');
+                }, 1000);
+            }
+        }
+
+        function removePlayerBubble(nickname) {
+            const bubble = document.querySelector(`[data-nickname="${nickname}"]`);
+            if (bubble) {
+                bubble.style.animation = 'bubblePop 0.3s reverse';
+                setTimeout(() => {
+                    bubble.remove();
+                    
+                    // Check if no players left, show message
+                    const remainingPlayers = playerBubbles.querySelectorAll('.player-bubble').length;
+                    if (remainingPlayers === 0) {
+                        playerBubbles.innerHTML = '<div class="no-players-message">No players yet...</div>';
+                    }
+                }, 300);
+            }
+        }
+
+        function updateSubmissionCounter(submitted, total) {
+            submissionCounter.textContent = `${submitted} / ${total} players have submitted`;
+        }
+
+        function updateVoteCounter(voted, total) {
+            voteCounter.textContent = `${voted} / ${total} players have voted`;
+        }
+
+        // Legacy functions (kept for backwards compatibility)
+        function showExemplarResult(data) {
+            showScreen('results');
+            currentExemplar.textContent = `"${data.exemplar}"`;
+            
+            // Create player circles and animate them
+            createPlayerCircles(data.votes);
+            animateVoteSplit(data.votes);
+            
+            // Update split display
+            const yesCount = data.votes.filter(v => v.vote).length;
+            const noCount = data.votes.length - yesCount;
+            const points = Math.min(yesCount, noCount);
+            
+            splitDisplay.textContent = `Split: ${yesCount} YES, ${noCount} NO (${points} points)`;
+        }
+
+        function createPlayerCircles(votes) {
+            // Clear existing circles
+            votingArena.querySelectorAll('.player-circle').forEach(circle => circle.remove());
+            
+            votes.forEach((vote, index) => {
+                const circle = document.createElement('div');
+                circle.className = 'player-circle';
+                circle.textContent = index + 1;
+                
+                // Start all circles in center
+                circle.style.left = '50%';
+                circle.style.top = '50%';
+                circle.style.transform = 'translate(-50%, -50%)';
+                
+                votingArena.appendChild(circle);
+            });
+        }
+
+        function animateVoteSplit(votes) {
+            const circles = votingArena.querySelectorAll('.player-circle');
+            const yesCircles = [];
+            const noCircles = [];
+            
+            votes.forEach((vote, index) => {
+                if (vote.vote) {
+                    yesCircles.push(circles[index]);
+                } else {
+                    noCircles.push(circles[index]);
+                }
+            });
+            
+            // Animate circles to their sides with staggered timing
+            setTimeout(() => {
+                animateCirclesToSide(yesCircles, 'yes');
+                animateCirclesToSide(noCircles, 'no');
+            }, 500);
+        }
+
+        function animateCirclesToSide(circles, side) {
+            const arena = votingArena.getBoundingClientRect();
+            const sideElement = votingArena.querySelector(`.vote-side.${side}`);
+            const sideRect = sideElement.getBoundingClientRect();
+            
+            circles.forEach((circle, index) => {
+                setTimeout(() => {
+                    // Calculate position within the side
+                    const cols = Math.ceil(Math.sqrt(circles.length));
+                    const row = Math.floor(index / cols);
+                    const col = index % cols;
+                    
+                    const x = (col + 1) * (sideRect.width / (cols + 1));
+                    const y = (row + 1) * (sideRect.height / (Math.ceil(circles.length / cols) + 1));
+                    
+                    circle.style.left = (side === 'yes' ? x : sideRect.width / 2 + x) + 'px';
+                    circle.style.top = y + 'px';
+                    circle.style.transform = 'translate(-50%, -50%)';
+                    
+                    // Add bounce effect
+                    circle.classList.add('bounce');
+                }, index * 100);
+            });
+        }
+
+        function showSummary(data) {
+            showScreen('summary');
+            
+            const resultsHtml = data.results.map(result => {
+                const yesCount = result.votes.filter(v => v.vote).length;
+                const noCount = result.votes.length - yesCount;
+                const yesPercent = (yesCount / (yesCount + noCount)) * 100;
+                const points = Math.min(yesCount, noCount);
+                
+                return `
+                    <div class="exemplar-result slide-in">
+                        <div class="exemplar-text">"${result.exemplar}"</div>
+                        <div class="split-bar">
+                            <div class="split-fill" style="background: linear-gradient(90deg, #28a745 ${yesPercent}%, #dc3545 ${yesPercent}%);">
+                                <div class="split-text">${yesCount} YES / ${noCount} NO</div>
+                            </div>
+                        </div>
+                        <div class="score-display">${points} pts</div>
+                    </div>
+                `;
+            }).join('');
+            
+            summaryResults.innerHTML = resultsHtml;
+        }
+
+        function showScoreboard(data) {
+            showScreen('scoreboard');
+            
+            const sortedPlayers = [...data.players].sort((a, b) => b.score - a.score);
+            
+            const scoresHtml = sortedPlayers.map((player, index) => `
+                <div class="score-item slide-in" style="animation-delay: ${index * 0.1}s">
+                    <div>
+                        <span class="score-rank">#${index + 1}</span>
+                        ${player.nickname}
+                    </div>
+                    <div>${player.score} points</div>
+                </div>
+            `).join('');
+            
+            scoreboardList.innerHTML = scoresHtml;
+        }
+
+        // Handle connection errors
+        socket.on('connect_error', () => {
+            alert('Connection error. Please refresh the page.');
+        });
+
+        socket.on('error', (data) => {
+            alert('Error: ' + data.message);
+        });
+    </script>
+</body>
+</html>
