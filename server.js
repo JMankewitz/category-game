@@ -1,5 +1,4 @@
-const Database = require('better-sqlite3');
-const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 
 const express = require('express');
 const http = require('http');
@@ -18,10 +17,10 @@ const rooms = new Map();
 
 // Initialize database
 const dbPath = path.join(__dirname, 'game_data.db');
-const db = new Database(dbPath);
+const db = new sqlite3.Database(dbPath);
 
 // Enable foreign keys
-db.pragma('foreign_keys = ON');
+db.run('PRAGMA foreign_keys = ON');
 
 // Generate random room codes
 function generateRoomCode() {
@@ -51,17 +50,18 @@ function createRoom(code) {
 
 // Create tables if they don't exist
 function initializeDatabase() {
-    const schemaSQL = `
-    CREATE TABLE IF NOT EXISTS games (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        room_code TEXT NOT NULL UNIQUE,
-        gm_id TEXT,
-        started_at DATETIME,
-        ended_at DATETIME,
-        total_rounds INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'active',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+    return new Promise((resolve, reject) => {
+        const schemaSQL = `
+        CREATE TABLE IF NOT EXISTS games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_code TEXT NOT NULL UNIQUE,
+            gm_id TEXT,
+            started_at DATETIME,
+            ended_at DATETIME,
+            total_rounds INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
     CREATE TABLE IF NOT EXISTS players (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,165 +125,165 @@ function initializeDatabase() {
     `;
 
     // Execute each statement separately
-    const statements = schemaSQL.split(';').filter(stmt => stmt.trim());
-    statements.forEach(statement => {
-        if (statement.trim()) {
-            db.exec(statement);
-        }
+    db.exec(schemaSQL, (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
     });
 }
 
 // Initialize database on startup
 initializeDatabase();
 
-// Prepared statements for better performance
-const statements = {
-    insertGame: db.prepare(`
-        INSERT INTO games (room_code, gm_id, started_at, status)
-        VALUES (?, ?, ?, ?)
-    `),
-    
-    insertPlayer: db.prepare(`
-        INSERT INTO players (socket_id, nickname, game_id, joined_at)
-        VALUES (?, ?, ?, ?)
-    `),
-    
-    insertRound: db.prepare(`
-        INSERT INTO rounds (game_id, round_number, category, started_at)
-        VALUES (?, ?, ?, ?)
-    `),
-    
-    insertSubmission: db.prepare(`
-        INSERT INTO submissions (round_id, player_id, exemplar, submitted_at)
-        VALUES (?, ?, ?, ?)
-    `),
-    
-    insertVote: db.prepare(`
-        INSERT INTO votes (submission_id, voter_player_id, vote, voted_at)
-        VALUES (?, ?, ?, ?)
-    `),
-    
-    updateGameEnd: db.prepare(`
-        UPDATE games SET ended_at = ?, status = 'completed', total_rounds = ?
-        WHERE room_code = ?
-    `),
-    
-    updatePlayerScore: db.prepare(`
-        UPDATE players SET final_score = ? WHERE socket_id = ? AND game_id = ?
-    `),
-    
-    updatePlayerLeft: db.prepare(`
-        UPDATE players SET left_at = ? WHERE socket_id = ? AND game_id = ?
-    `),
-    
-    updateSubmissionResults: db.prepare(`
-        UPDATE submissions SET points_earned = ?, yes_votes = ?, no_votes = ?
-        WHERE round_id = ? AND player_id = ?
-    `),
-    
-    updateRoundTiming: db.prepare(`
-        UPDATE rounds SET submission_ended_at = ?, voting_ended_at = ?, results_shown_at = ?,
-                         total_submissions = ?, total_votes = ?
-        WHERE id = ?
-    `),
-    
-    getGameByRoomCode: db.prepare(`
-        SELECT * FROM games WHERE room_code = ?
-    `),
-    
-    getPlayerBySocket: db.prepare(`
-        SELECT * FROM players WHERE socket_id = ? AND game_id = ?
-    `),
-    
-    getCurrentRound: db.prepare(`
-        SELECT * FROM rounds WHERE game_id = ? ORDER BY round_number DESC LIMIT 1
-    `),
-    
-    getSubmissionByRoundPlayer: db.prepare(`
-        SELECT * FROM submissions WHERE round_id = ? AND player_id = ?
-    `)
-};
 
 // Database helper functions
 function logGameCreated(roomCode, gmSocketId) {
-    try {
-        const result = statements.insertGame.run(roomCode, gmSocketId, new Date().toISOString(), 'waiting');
-        console.log(`DB: Game ${roomCode} created with ID ${result.lastInsertRowid}`);
-        return result.lastInsertRowid;
-    } catch (error) {
-        console.error('DB Error creating game:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`INSERT INTO games (room_code, gm_id, started_at, status) VALUES (?, ?, ?, ?)`);
+        stmt.run(roomCode, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
+            if (err) {
+                console.error('DB Error creating game:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Game ${roomCode} created with ID ${this.lastID}`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
 }
 
+
 function logPlayerJoined(socketId, nickname, gameId) {
-    try {
-        const result = statements.insertPlayer.run(socketId, nickname, gameId, new Date().toISOString());
-        console.log(`DB: Player ${nickname} (ID ${result.lastInsertRowid}) joined game ${gameId}`);
-        return result.lastInsertRowid;
-    } catch (error) {
-        console.error('DB Error adding player:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`INSERT INTO players (socket_id, nickname, game_id, joined_at) VALUES (?, ?, ?, ?)`);
+        stmt.run(socketId, nickname, gameId, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error('DB Error adding player:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Player ${nickname} (ID ${this.lastID}) joined game ${gameId}`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 function logRoundStarted(gameId, roundNumber, category) {
-    try {
-        const result = statements.insertRound.run(gameId, roundNumber, category, new Date().toISOString());
-        console.log(`DB: Round ${roundNumber} started in game ${gameId} with category "${category}"`);
-        return result.lastInsertRowid;
-    } catch (error) {
-        console.error('DB Error starting round:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`INSERT INTO rounds (game_id, round_number, category, started_at) VALUES (?, ?, ?, ?)`);
+        stmt.run(gameId, roundNumber, category, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error('DB Error starting round:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Round ${roundNumber} started in game ${gameId} with category "${category}"`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 function logSubmission(roundId, playerId, exemplar) {
-    try {
-        const result = statements.insertSubmission.run(roundId, playerId, exemplar, new Date().toISOString());
-        console.log(`DB: Submission logged for player ${playerId} in round ${roundId}`);
-        return result.lastInsertRowid;
-    } catch (error) {
-        console.error('DB Error logging submission:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`INSERT INTO submissions (round_id, player_id, exemplar, submitted_at) VALUES (?, ?, ?, ?)`);
+        stmt.run(roundId, playerId, exemplar, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error('DB Error logging submission:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Submission logged for player ${playerId} in round ${roundId}`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 function logVote(submissionId, voterPlayerId, vote) {
-    try {
-        // Convert boolean to integer: true -> 1, false -> 0
+    return new Promise((resolve, reject) => {
         const voteValue = vote ? 1 : 0;
-        const result = statements.insertVote.run(submissionId, voterPlayerId, voteValue, new Date().toISOString());
-        console.log(`DB: Vote logged - submission ${submissionId}, voter ${voterPlayerId}, vote ${voteValue}`);
-        return result.lastInsertRowid;
-    } catch (error) {
-        console.error('DB Error logging vote:', error);
-    }
+        const stmt = db.prepare(`INSERT INTO votes (submission_id, voter_player_id, vote, voted_at) VALUES (?, ?, ?, ?)`);
+        stmt.run(submissionId, voterPlayerId, voteValue, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error('DB Error logging vote:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Vote logged - submission ${submissionId}, voter ${voterPlayerId}, vote ${voteValue}`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 function updateGameStatus(roomCode, status, totalRounds = null) {
-    try {
+    return new Promise((resolve, reject) => {
         if (status === 'completed') {
-            statements.updateGameEnd.run(new Date().toISOString(), status, totalRounds, roomCode);
+            const stmt = db.prepare(`UPDATE games SET ended_at = ?, status = ?, total_rounds = ? WHERE room_code = ?`);
+            stmt.run(new Date().toISOString(), status, totalRounds, roomCode, function(err) {
+                if (err) {
+                    console.error('DB Error updating game status:', err);
+                    reject(err);
+                } else {
+                    console.log(`DB: Game ${roomCode} status updated to ${status}`);
+                    resolve();
+                }
+            });
+            stmt.finalize();
         }
-        console.log(`DB: Game ${roomCode} status updated to ${status}`);
-    } catch (error) {
-        console.error('DB Error updating game status:', error);
-    }
+    });
 }
 
 function updatePlayerFinalScore(socketId, gameId, score) {
-    try {
-        statements.updatePlayerScore.run(score, socketId, gameId);
-        console.log(`DB: Player ${socketId} final score updated to ${score}`);
-    } catch (error) {
-        console.error('DB Error updating player score:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`UPDATE players SET final_score = ? WHERE socket_id = ? AND game_id = ?`);
+        stmt.run(score, socketId, gameId, function(err) {
+            if (err) {
+                console.error('DB Error updating player score:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Player ${socketId} final score updated to ${score}`);
+                resolve();
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 function logPlayerLeft(socketId, gameId) {
-    try {
-        statements.updatePlayerLeft.run(new Date().toISOString(), socketId, gameId);
-        console.log(`DB: Player ${socketId} left game ${gameId}`);
-    } catch (error) {
-        console.error('DB Error logging player departure:', error);
-    }
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`UPDATE players SET left_at = ? WHERE socket_id = ? AND game_id = ?`);
+        stmt.run(new Date().toISOString(), socketId, gameId, function(err) {
+            if (err) {
+                console.error('DB Error logging player departure:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Player ${socketId} left game ${gameId}`);
+                resolve();
+            }
+        });
+        stmt.finalize();
+    });
+}
+
+
+function updateSubmissionResults(points, yesCount, noCount, roundId, playerId) {
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare(`UPDATE submissions SET points_earned = ?, yes_votes = ?, no_votes = ? WHERE round_id = ? AND player_id = ?`);
+        stmt.run(points, yesCount, noCount, roundId, playerId, function(err) {
+            if (err) {
+                console.error('DB Error updating submission results:', err);
+                reject(err);
+            } else {
+                console.log(`DB: Submission results updated for player ${playerId} in round ${roundId}`);
+                resolve();
+            }
+        });
+        stmt.finalize();
+    });
 }
 
 // Export for use in server.js
@@ -305,7 +305,7 @@ io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
     // GM creates a new room
-    socket.on('create-room', () => {
+    socket.on('create-room', async () => {
         let roomCode;
         do {
             roomCode = generateRoomCode();
@@ -314,7 +314,7 @@ io.on('connection', (socket) => {
         const room = createRoom(roomCode);
         room.gmSocketId = socket.id;
 
-        room.dbGameId = logGameCreated(roomCode, socket.id);
+        room.dbGameId = await logGameCreated(roomCode, socket.id);
 
         rooms.set(roomCode, room);
         
@@ -325,7 +325,7 @@ io.on('connection', (socket) => {
     });
 
     // Player joins room
-    socket.on('join-room', (data) => {
+    socket.on('join-room', async (data) => {
         const { roomCode, nickname } = data;
         const room = rooms.get(roomCode);
 
@@ -348,7 +348,7 @@ io.on('connection', (socket) => {
 
         // Add player to room
         const playerId = socket.id;
-        const dbPlayerId = logPlayerJoined(socket.id, nickname.trim(), room.dbGameId);
+        const dbPlayerId = await logPlayerJoined(socket.id, nickname.trim(), room.dbGameId);
         room.players.set(playerId, {
             nickname: nickname.trim(),
             score: 0,
@@ -470,7 +470,7 @@ io.on('connection', (socket) => {
     });
 
     // GM sets category
-    socket.on('set-category', (data) => {
+    socket.on('set-category', async (data) => {
         const room = findRoomBySocket(socket.id);
         if (!room || room.gmSocketId !== socket.id) {
             socket.emit('error', { message: 'Not authorized' });
@@ -481,7 +481,7 @@ io.on('connection', (socket) => {
         room.currentCategory = category;
         room.gameState = 'submitting';
 
-        room.currentRoundDbId = logRoundStarted(room.dbGameId, room.round, category);
+        room.currentRoundDbId = await logRoundStarted(room.dbGameId, room.round, category);
 
         room.submissions = [];
         
@@ -521,7 +521,7 @@ io.on('connection', (socket) => {
     });
 
     // Player submits exemplar
-    socket.on('submit-exemplar', (data) => {
+    socket.on('submit-exemplar', async (data) => {
         const room = findRoomBySocket(socket.id);
         if (!room || !room.players.has(socket.id)) {
             socket.emit('error', { message: 'Not in a room' });
@@ -536,7 +536,7 @@ io.on('connection', (socket) => {
         const { exemplar } = data;
         const player = room.players.get(socket.id);
         
-        const submissionDbId = logSubmission(room.currentRoundDbId, player.dbPlayerId, exemplar.trim());
+        const submissionDbId = await logSubmission(room.currentRoundDbId, player.dbPlayerId, exemplar.trim());
 
         if (player.hasSubmitted) {
             socket.emit('error', { message: 'Already submitted' });
@@ -640,7 +640,7 @@ io.on('connection', (socket) => {
     });
 
     // Player submits votes
-    socket.on('submit-votes', (data) => {
+    socket.on('submit-votes', async (data) => {
         const room = findRoomBySocket(socket.id);
         if (!room || !room.players.has(socket.id)) {
             socket.emit('error', { message: 'Not in a room' });
@@ -661,15 +661,15 @@ io.on('connection', (socket) => {
         }
 
         // Record votes with database logging
-        Object.entries(votes).forEach(([exemplarIndex, vote]) => {
+        for (const [exemplarIndex, vote] of Object.entries(votes)) {
             const index = parseInt(exemplarIndex);
             if (room.submissions[index]) {
                 room.submissions[index].votes.set(socket.id, vote);
                 
                 // Log to database
-                logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, vote);
+                await logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, vote);
             }
-        });
+        }
 
         player.hasVoted = true;
 
@@ -699,7 +699,7 @@ io.on('connection', (socket) => {
         console.log(`Player ${player.nickname} voted in room ${room.code} (${votedCount}/${room.players.size})`);
     });
 // GM shows results
-socket.on('show-results', () => {
+socket.on('show-results', async () => {
     const room = findRoomBySocket(socket.id);
     if (!room || room.gmSocketId !== socket.id) {
         socket.emit('error', { message: 'Not authorized' });
@@ -709,7 +709,8 @@ socket.on('show-results', () => {
     room.gameState = 'results';
     
     // Calculate scores and results
-    const results = room.submissions.map(submission => {
+    const results = [];
+    for (const submission of room.submissions) {
         const votes = Array.from(submission.votes.entries()).map(([playerId, vote]) => ({
             playerId,
             vote
@@ -724,24 +725,19 @@ socket.on('show-results', () => {
         if (submitter) {
             submitter.score += points;
 
-            updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
-
-            statements.updateSubmissionResults.run(
-                points, yesCount, noCount, 
-                room.currentRoundDbId, submitter.dbPlayerId
-            );
-
+            await updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
+            await updateSubmissionResults(points, yesCount, noCount, room.currentRoundDbId, submitter.dbPlayerId);
         }
         
-        return {
+        results.push({
             exemplar: submission.exemplar,
             submittedBy: submission.nickname,
             votes: votes,
             yesCount,
             noCount,
             points
-        };
-    });
+        });
+    }
 
     // Store results in room for GM navigation
     room.currentResults = results;
@@ -964,7 +960,7 @@ socket.on('show-round-scoreboard', () => {
     });
 
     // GM ends game
-    socket.on('end-game', () => {
+    socket.on('end-game', async () => {
         const room = findRoomBySocket(socket.id);
         if (!room || room.gmSocketId !== socket.id) {
             socket.emit('error', { message: 'Not authorized' });
@@ -972,7 +968,7 @@ socket.on('show-round-scoreboard', () => {
         }
 
         room.gameState = 'ended';
-        updateGameStatus(room.code, 'completed', room.round);
+        await updateGameStatus(room.code, 'completed', room.round);
 
         const finalScores = Array.from(room.players.values()).map(p => ({
             nickname: p.nickname,
@@ -996,7 +992,7 @@ socket.on('show-round-scoreboard', () => {
     });
 
     // Handle disconnections
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         console.log('Client disconnected:', socket.id);
         
         // Find and clean up from any rooms
@@ -1014,7 +1010,7 @@ socket.on('show-round-scoreboard', () => {
                 // Player disconnected
                 const player = room.players.get(socket.id);
 
-                logPlayerLeft(socket.id, room.dbGameId);
+                await logPlayerLeft(socket.id, room.dbGameId);
 
                 room.players.delete(socket.id);
                 
@@ -1066,17 +1062,14 @@ server.listen(PORT, () => {
     console.log(`Open http://localhost:${PORT} to start`);
 });
 
-// Data export endpoint for research
 app.get('/export/csv', (req, res) => {
     try {
         const { password } = req.query;
         
-        // Simple password protection (change this!)
         if (password !== 'research123') {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Get all data joined for easy CSV export
         const query = `
         SELECT 
             g.room_code,
@@ -1100,19 +1093,22 @@ app.get('/export/csv', (req, res) => {
         ORDER BY g.created_at, r.round_number, s.exemplar, voter.nickname
         `;
         
-        const data = db.prepare(query).all();
-        
-        // Convert to CSV
-        const csv = [
-            'room_code,game_start,game_end,round_number,category,submitter,exemplar,points_earned,yes_votes,no_votes,voter_choice,voter_name',
-            ...data.map(row => Object.values(row).map(val => 
-                val === null ? '' : `"${val}"`
-            ).join(','))
-        ].join('\n');
-        
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename="category_game_data.csv"');
-        res.send(csv);
+        db.all(query, [], (err, data) => {
+            if (err) {
+                return res.status(500).json({ error: err.message });
+            }
+            
+            const csv = [
+                'room_code,game_start,game_end,round_number,category,submitter,exemplar,points_earned,yes_votes,no_votes,voter_choice,voter_name',
+                ...data.map(row => Object.values(row).map(val => 
+                    val === null ? '' : `"${val}"`
+                ).join(','))
+            ].join('\n');
+            
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename="category_game_data.csv"');
+            res.send(csv);
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
