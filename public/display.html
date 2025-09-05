@@ -261,6 +261,109 @@
             margin-bottom: 0.3rem;
         }
 
+        /* Timer display styles */
+        .timer-display {
+            position: fixed;
+            top: 50%;
+            right: 2rem;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.9);
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+
+        .timer-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .timer-countdown {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 0.3rem;
+            font-family: 'Courier New', monospace;
+        }
+
+        .timer-countdown.warning {
+            color: #ff6b6b;
+            animation: timerPulse 1s infinite;
+        }
+
+        .timer-countdown.critical {
+            color: #ff3333;
+            animation: timerPulse 0.5s infinite;
+        }
+
+        .timer-phase {
+            font-size: 0.8rem;
+            color: #888;
+            font-style: italic;
+        }
+
+        @keyframes timerPulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .timer-progress {
+            width: 100%;
+            height: 4px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .timer-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4ecdc4, #44a08d);
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+
+        .timer-progress-bar.warning {
+            background: linear-gradient(90deg, #ffa726, #ff9800);
+        }
+
+        .timer-progress-bar.critical {
+            background: linear-gradient(90deg, #ff6b6b, #ee5a24);
+        }
+
+        /* Hide timer when not needed */
+        .timer-display.hidden {
+            display: none;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .timer-display {
+                position: fixed;
+                top: 1rem;
+                right: 1rem;
+                left: auto;
+                transform: none;
+                min-width: 100px;
+                padding: 1rem;
+            }
+            
+            .timer-countdown {
+                font-size: 2rem;
+            }
+        }
+
         .final-score {
             background: linear-gradient(45deg, rgba(255,215,0,0.1), rgba(255,255,255,0.1));
             border: 2px solid rgba(255,215,0,0.3);
@@ -423,7 +526,14 @@
 </head>
 <body>
     <div class="room-code" id="roomCode">XXXX</div>
-    
+    <div class="timer-display hidden" id="timerDisplay">
+        <div class="timer-label" id="timerLabel">Time Remaining</div>
+        <div class="timer-countdown" id="timerCountdown">0:00</div>
+        <div class="timer-phase" id="timerPhase">Waiting...</div>
+        <div class="timer-progress">
+            <div class="timer-progress-bar" id="timerProgressBar"></div>
+        </div>
+    </div>
     <div class="main-content">
         <!-- Waiting for room connection -->
         <div id="waitingScreen">
@@ -556,6 +666,14 @@
         const playersWaiting = document.getElementById('playersWaiting');
         const playerBubbles = document.getElementById('playerBubbles');
 
+        // Timer-related DOM elements
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerLabel = document.getElementById('timerLabel');
+        const timerCountdown = document.getElementById('timerCountdown');
+        const timerPhase = document.getElementById('timerPhase');
+        const timerProgressBar = document.getElementById('timerProgressBar');
+
+
         // New enhanced results elements
         const resultProgress = document.getElementById('resultProgress');
         const yesCount = document.getElementById('yesCount');
@@ -565,6 +683,13 @@
         const scoreboardRound = document.getElementById('scoreboardRound');
 
         const votingCategoryDisplay = document.getElementById('votingCategoryDisplay');
+        
+        let currentTimer = {
+            remaining: 0,
+            total: 0,
+            phase: '',
+            isActive: false
+        };
 
         // Connect to a room (URL parameter or prompt)
         window.addEventListener('load', () => {
@@ -589,6 +714,11 @@
 
         socket.on('display-update', (data) => {
             updateDisplay(data);
+        });
+
+        // Timer update handler
+        socket.on('timer-update', (data) => {
+            updateTimerDisplay(data.remaining, data.phase);
         });
 
         socket.on('player-joined', (data) => {
@@ -635,6 +765,85 @@
             showScoreboard(data);
         });
 
+        // Function to update timer display
+        function updateTimerDisplay(remaining, phase) {
+            currentTimer.remaining = remaining;
+            currentTimer.phase = phase;
+            currentTimer.isActive = remaining > 0;
+            
+            if (!currentTimer.isActive) {
+                timerDisplay.classList.add('hidden');
+                return;
+            }
+            
+            // Show timer
+            timerDisplay.classList.remove('hidden');
+            
+            // Update countdown text
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            timerCountdown.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Update phase label and text
+            const phaseLabels = {
+                'submission': 'Submit Exemplars',
+                'voting': 'Vote on All',
+                'results': 'Results'
+            };
+            
+            timerLabel.textContent = phaseLabels[phase] || 'Time Remaining';
+            timerPhase.textContent = getPhaseDescription(phase);
+            
+            // Update progress bar
+            if (currentTimer.total === 0) {
+                // First update for this phase - set total
+                currentTimer.total = remaining;
+            }
+            
+            const progress = ((currentTimer.total - remaining) / currentTimer.total) * 100;
+            timerProgressBar.style.width = `${progress}%`;
+            
+            // Apply warning styles based on time remaining
+            const percentRemaining = (remaining / currentTimer.total) * 100;
+            
+            // Remove existing warning classes
+            timerCountdown.classList.remove('warning', 'critical');
+            timerProgressBar.classList.remove('warning', 'critical');
+            
+            if (percentRemaining <= 10) {
+                timerCountdown.classList.add('critical');
+                timerProgressBar.classList.add('critical');
+            } else if (percentRemaining <= 25) {
+                timerCountdown.classList.add('warning');
+                timerProgressBar.classList.add('warning');
+            }
+        }
+
+        // Helper function for phase descriptions
+        function getPhaseDescription(phase) {
+            switch(phase) {
+                case 'submission':
+                    return 'Submit your exemplar';
+                case 'voting':
+                    return 'Vote yes/no on each';
+                case 'results':
+                    return 'Check results';
+                default:
+                    return 'Waiting...';
+            }
+        }
+
+        // Reset timer when phases change
+        function resetTimer() {
+            currentTimer = {
+                remaining: 0,
+                total: 0,
+                phase: '',
+                isActive: false
+            };
+            timerDisplay.classList.add('hidden');
+        }
+
         // Display management functions
         function showScreen(screen) {
             [waitingScreen, categoryScreen, votingScreen, resultsScreen, 
@@ -671,6 +880,20 @@
         }
 
         function updateDisplay(data) {
+            // Reset timer when game state changes (unless it's the same state)
+                if (data.gameState !== currentTimer.phase) {
+                    resetTimer();
+                }
+                
+                // Handle timer initialization for new phases
+                if (data.timerRemaining && data.timerRemaining > 0) {
+                    const phase = data.gameState === 'submitting' ? 'submission' : 
+                                data.gameState === 'voting' ? 'voting' : '';
+                    if (phase) {
+                        currentTimer.total = data.timerRemaining;
+                        updateTimerDisplay(data.timerRemaining, phase);
+                    }
+                }
             switch(data.gameState) {
                 case 'waiting':
                     showScreen('waiting');

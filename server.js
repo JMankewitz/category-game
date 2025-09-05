@@ -22,6 +22,54 @@ const db = new sqlite3.Database(dbPath);
 // Enable foreign keys
 db.run('PRAGMA foreign_keys = ON');
 
+class GameTimer {
+    constructor(duration, onComplete, onTick = null) {
+        this.duration = duration;
+        this.remaining = duration;
+        this.onComplete = onComplete;
+        this.onTick = onTick;
+        this.interval = null;
+        this.isActive = false;
+    }
+    
+    start() {
+        if (this.isActive) return;
+        
+        this.isActive = true;
+        this.interval = setInterval(() => {
+            this.remaining--;
+            
+            if (this.onTick) {
+                this.onTick(this.remaining);
+            }
+            
+            if (this.remaining <= 0) {
+                this.complete();
+            }
+        }, 1000);
+    }
+    
+    complete() {
+        if (!this.isActive) return;
+        
+        this.isActive = false;
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
+        }
+        this.onComplete();
+    }
+    
+    cancel() {
+        this.isActive = false;
+        if (this.interval) {
+            clearInterval(this.interval);
+            this.interval = null;
+        }
+    }
+}
+
+
 // Generate random room codes
 function generateRoomCode() {
     const chars = 'ABCDEFGHIJKLMNPQRSTUVWXYZ123456789'; // No O, 0 to avoid confusion
@@ -37,15 +85,385 @@ function createRoom(code) {
     return {
         code: code,
         dbGameId: null,
-        players: new Map(), // playerId -> {nickname, score, socketId, hasSubmitted, hasVoted}
+        players: new Map(),
         gmSocketId: null,
         displaySocketId: null,
-        gameState: 'waiting', // waiting, waiting-for-category, submitting, voting, results, ended
+        gameState: 'waiting',
         currentCategory: '',
-        submissions: [], // {playerId, nickname, exemplar, votes: {playerId: boolean}}
+        submissions: [],
         round: 0,
-        createdAt: new Date()
+        createdAt: new Date(),
+        
+        // NEW TIMER PROPERTIES
+        currentTimer: null,
+        phaseStartTime: null,
+        timerSettings: {
+            submission: 120, // 2 minutes
+            votingPerExemplar: 15, // 15 seconds per exemplar
+            votingMinimum: 30, // minimum 30 seconds for voting
+            exemplarResult: 5, // 5 seconds per result
+            summary: 15, // 15 seconds for summary
+            scoreboard: 10 // 10 seconds for scoreboard
+        }
     };
+}
+
+function broadcastTimerUpdate(room, remaining, phase) {
+    const timerData = {
+        remaining: remaining,
+        phase: phase,
+        gameState: room.gameState
+    };
+    
+    // Send to all players
+    io.to(room.code).emit('timer-update', timerData);
+    
+    // Send to display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('timer-update', timerData);
+    }
+}
+
+// Modified voting phase with timer
+function startVotingPhase(room) {
+    room.gameState = 'voting';
+    
+    // Cancel any existing timer
+    if (room.currentTimer) {
+        room.currentTimer.cancel();
+    }
+    
+    // Calculate voting time based on number of exemplars
+    const votingTime = Math.max(
+        room.timerSettings.votingMinimum,
+        room.submissions.length * room.timerSettings.votingPerExemplar
+    );
+    
+    // Reset voting status
+    room.players.forEach(player => {
+        player.hasVoted = false;
+    });
+
+    // Clear existing votes
+    room.submissions.forEach(submission => {
+        submission.votes.clear();
+    });
+    
+    // Start voting timer
+    room.currentTimer = new GameTimer(
+        votingTime,
+        () => {
+            console.log(`Voting timer expired for room ${room.code}`);
+            startResultsPhase(room);
+        },
+        (remaining) => {
+            broadcastTimerUpdate(room, remaining, 'voting');
+        }
+    );
+    
+    room.currentTimer.start();
+
+    const gameStateData = {
+        gameState: room.gameState,
+        currentCategory: room.currentCategory,
+        timerRemaining: votingTime,
+        submissions: room.submissions.map(s => ({
+            exemplar: s.exemplar,
+            submittedBy: s.nickname
+        })),
+        players: Array.from(room.players.values()).map(p => ({
+            nickname: p.nickname,
+            score: p.score,
+            hasSubmitted: p.hasSubmitted,
+            hasVoted: p.hasVoted
+        }))
+    };
+
+    io.to(room.code).emit('game-state-update', gameStateData);
+    
+    // Update display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('display-update', {
+            gameState: room.gameState,
+            currentCategory: room.currentCategory,
+            totalPlayers: room.players.size,
+            votedCount: 0,
+            timerRemaining: votingTime
+        });
+    }
+}
+
+// Check if all players have voted (early completion)
+function checkVotingComplete(room) {
+    const votedCount = Array.from(room.players.values())
+        .filter(p => p.hasVoted).length;
+    
+    if (votedCount === room.players.size && room.players.size > 0) {
+        console.log(`All players voted early in room ${room.code}`);
+        if (room.currentTimer) {
+            room.currentTimer.complete();
+        }
+    }
+}
+
+function startSubmissionPhase(room, category) {
+    room.gameState = 'submitting';
+    room.currentCategory = category;
+    room.phaseStartTime = Date.now();
+    room.submissions = [];
+    
+    // Reset player status
+    room.players.forEach(player => {
+        player.hasSubmitted = false;
+        player.hasVoted = false;
+    });
+    
+    // Cancel any existing timer
+    if (room.currentTimer) {
+        room.currentTimer.cancel();
+    }
+    
+    // Start submission timer
+    room.currentTimer = new GameTimer(
+        room.timerSettings.submission,
+        () => {
+            console.log(`Submission timer expired for room ${room.code}`);
+            startVotingPhase(room);
+        },
+        (remaining) => {
+            broadcastTimerUpdate(room, remaining, 'submission');
+        }
+    );
+    
+    room.currentTimer.start();
+    
+    // Broadcast game state
+    const gameStateData = {
+        gameState: room.gameState,
+        currentCategory: room.currentCategory,
+        round: room.round,
+        timerRemaining: room.timerSettings.submission,
+        players: Array.from(room.players.values()).map(p => ({
+            nickname: p.nickname,
+            score: p.score,
+            hasSubmitted: p.hasSubmitted,
+            hasVoted: p.hasVoted
+        }))
+    };
+
+    io.to(room.code).emit('game-state-update', gameStateData);
+    
+    // Update display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('display-update', {
+            gameState: room.gameState,
+            currentCategory: room.currentCategory,
+            round: room.round,
+            totalPlayers: room.players.size,
+            submittedCount: 0,
+            timerRemaining: room.timerSettings.submission
+        });
+    }
+}
+
+// Check if all players have submitted (early completion)
+function checkSubmissionComplete(room) {
+    const submittedCount = Array.from(room.players.values())
+        .filter(p => p.hasSubmitted).length;
+    
+    if (submittedCount === room.players.size && room.players.size > 0) {
+        console.log(`All players submitted early in room ${room.code}`);
+        if (room.currentTimer) {
+            room.currentTimer.complete();
+        }
+    }
+}
+
+// Auto-results phase (replaces manual GM control)
+async function startResultsPhase(room) {
+    room.gameState = 'results';
+    
+    // Cancel any existing timer
+    if (room.currentTimer) {
+        room.currentTimer.cancel();
+    }
+    
+    // Calculate scores and results (existing logic)
+    const results = [];
+    for (const submission of room.submissions) {
+        const votes = Array.from(submission.votes.entries()).map(([playerId, vote]) => ({
+            playerId,
+            vote
+        }));
+        
+        const yesCount = votes.filter(v => v.vote).length;
+        const noCount = votes.length - yesCount;
+        const points = Math.min(yesCount, noCount);
+        
+        // Award points to submitter
+        const submitter = room.players.get(submission.playerId);
+        if (submitter) {
+            submitter.score += points;
+            await updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
+            await updateSubmissionResults(points, yesCount, noCount, room.currentRoundDbId, submitter.dbPlayerId);
+        }
+        
+        results.push({
+            exemplar: submission.exemplar,
+            submittedBy: submission.nickname,
+            votes: votes,
+            yesCount,
+            noCount,
+            points
+        });
+    }
+
+    room.currentResults = results;
+    room.currentResultIndex = -1;
+
+    // Notify players
+    const gameStateData = {
+        gameState: room.gameState,
+        players: Array.from(room.players.values()).map(p => ({
+            nickname: p.nickname,
+            score: p.score,
+            hasSubmitted: p.hasSubmitted,
+            hasVoted: p.hasVoted
+        }))
+    };
+
+    io.to(room.code).emit('game-state-update', gameStateData);
+    
+    // Initialize results mode on display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('results-mode-start', {
+            totalResults: results.length
+        });
+    }
+
+    // Start auto-advancing through results
+    setTimeout(() => autoAdvanceResults(room), 1000);
+}
+
+// Auto-advance through results
+function autoAdvanceResults(room) {
+    if (!room.currentResults || room.currentResultIndex >= room.currentResults.length - 1) {
+        // All results shown, show summary
+        setTimeout(() => autoShowSummary(room), 1000);
+        return;
+    }
+    
+    room.currentResultIndex++;
+    const result = room.currentResults[room.currentResultIndex];
+    
+    // Send to display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('show-exemplar-result', {
+            exemplar: result.exemplar,
+            submittedBy: result.submittedBy,
+            votes: result.votes,
+            yesCount: result.yesCount,
+            noCount: result.noCount,
+            points: result.points,
+            currentIndex: room.currentResultIndex,
+            totalResults: room.currentResults.length
+        });
+    }
+    
+    // Schedule next result
+    setTimeout(() => autoAdvanceResults(room), room.timerSettings.exemplarResult * 1000);
+}
+
+// Auto-show summary
+function autoShowSummary(room) {
+    // Sort by points for summary (existing logic)
+    const sortedByPoints = [...room.currentResults].sort((a, b) => {
+        if (a.points !== b.points) {
+            return b.points - a.points;
+        }
+        const aControversy = Math.abs(a.yesCount - a.noCount);
+        const bControversy = Math.abs(b.yesCount - b.noCount);
+        return aControversy - bControversy;
+    });
+
+    let displayData;
+    if (sortedByPoints.length <= 6) {
+        displayData = {
+            showAll: true,
+            allResults: sortedByPoints,
+            title: `All ${sortedByPoints.length} Exemplars (Most to Least Points)`
+        };
+    } else {
+        displayData = {
+            showAll: false,
+            topResults: sortedByPoints.slice(0, 3),
+            bottomResults: sortedByPoints.slice(-3),
+            title: 'Top & Bottom Scoring Exemplars'
+        };
+    }
+
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('show-enhanced-summary', displayData);
+    }
+    
+    // Schedule scoreboard
+    setTimeout(() => autoShowScoreboard(room), room.timerSettings.summary * 1000);
+}
+
+// Auto-show scoreboard
+function autoShowScoreboard(room) {
+    const sortedPlayers = Array.from(room.players.values())
+        .map(p => ({ nickname: p.nickname, score: p.score }))
+        .sort((a, b) => b.score - a.score);
+
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('show-round-scoreboard', {
+            players: sortedPlayers,
+            round: room.round,
+            isGameWide: true
+        });
+    }
+    
+    // Schedule next round (this will be replaced with category management later)
+    setTimeout(() => prepareNextRound(room), room.timerSettings.scoreboard * 1000);
+}
+
+// Prepare next round (placeholder for category management)
+function prepareNextRound(room) {
+    room.round++;
+    room.gameState = 'waiting-for-category';
+    room.currentCategory = '';
+    room.submissions = [];
+    
+    // Reset player status
+    room.players.forEach(player => {
+        player.hasSubmitted = false;
+        player.hasVoted = false;
+    });
+
+    const gameStateData = {
+        gameState: room.gameState,
+        round: room.round,
+        players: Array.from(room.players.values()).map(p => ({
+            nickname: p.nickname,
+            score: p.score,
+            hasSubmitted: p.hasSubmitted,
+            hasVoted: p.hasVoted
+        }))
+    };
+
+    io.to(room.code).emit('game-state-update', gameStateData);
+    
+    // Update display
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('display-update', {
+            gameState: room.gameState,
+            round: room.round,
+            totalPlayers: room.players.size
+        });
+    }
+
+    console.log(`Round ${room.round} started in room ${room.code} (auto-generated)`);
 }
 
 // Create tables if they don't exist
@@ -465,46 +883,12 @@ io.on('connection', (socket) => {
         }
 
         const { category } = data;
-        room.currentCategory = category;
-        room.gameState = 'submitting';
-
         room.currentRoundDbId = await logRoundStarted(room.dbGameId, room.round, category);
-
-        room.submissions = [];
         
-        console.log(`Category set to "${category}" in room ${room.code}`); // Debug log
+        // Start timed submission phase
+        startSubmissionPhase(room, category);
         
-        // Reset player submission status
-        room.players.forEach(player => {
-            player.hasSubmitted = false;
-            player.hasVoted = false;
-        });
-
-        const gameStateData = {
-            gameState: room.gameState,
-            currentCategory: room.currentCategory,
-            round: room.round,
-            players: Array.from(room.players.values()).map(p => ({
-                nickname: p.nickname,
-                score: p.score,
-                hasSubmitted: p.hasSubmitted,
-                hasVoted: p.hasVoted
-            }))
-        };
-
-        io.to(room.code).emit('game-state-update', gameStateData);
-        
-        // Update display
-        if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('display-update', {
-                gameState: room.gameState,
-                currentCategory: room.currentCategory,
-                round: room.round,
-                totalPlayers: room.players.size
-            });
-        }
-
-        console.log(`Category "${category}" set for room ${room.code}, sent to ${room.players.size} players`);
+        console.log(`Category "${category}" set for room ${room.code}, timer started`);
     });
 
     // Player submits exemplar
@@ -572,7 +956,7 @@ io.on('connection', (socket) => {
                 submittedCount: submittedCount
             });
         }
-
+        checkSubmissionComplete(room);
         console.log(`Player ${player.nickname} submitted "${exemplar}" in room ${room.code}`);
     });
 
@@ -584,46 +968,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        room.gameState = 'voting';
-        
-        // Reset voting status
-        room.players.forEach(player => {
-            player.hasVoted = false;
-        });
-
-        // Clear existing votes
-        room.submissions.forEach(submission => {
-            submission.votes.clear();
-        });
-
-        const gameStateData = {
-            gameState: room.gameState,
-            currentCategory: room.currentCategory, // Make sure to include current category
-            submissions: room.submissions.map(s => ({
-                exemplar: s.exemplar,
-                submittedBy: s.nickname
-            })),
-            players: Array.from(room.players.values()).map(p => ({
-                nickname: p.nickname,
-                score: p.score,
-                hasSubmitted: p.hasSubmitted,
-                hasVoted: p.hasVoted
-            }))
-        };
-
-        io.to(room.code).emit('game-state-update', gameStateData);
-        
-        // Update display with current category
-        if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('display-update', {
-                gameState: room.gameState,
-                currentCategory: room.currentCategory, // Explicitly pass the current category
-                totalPlayers: room.players.size,
-                votedCount: 0
-            });
-        }
-
-        console.log(`Voting started in room ${room.code} for category "${room.currentCategory}"`);
+        startVotingPhase(room);
     });
 
     // Player submits votes
@@ -682,224 +1027,18 @@ io.on('connection', (socket) => {
                 votedCount: votedCount
             });
         }
-
+        checkVotingComplete(room);
         console.log(`Player ${player.nickname} voted in room ${room.code} (${votedCount}/${room.players.size})`);
     });
-// GM shows results
-socket.on('show-results', async () => {
+
+socket.on('show-results', () => {
     const room = findRoomBySocket(socket.id);
     if (!room || room.gmSocketId !== socket.id) {
         socket.emit('error', { message: 'Not authorized' });
         return;
     }
 
-    room.gameState = 'results';
-    
-    // Calculate scores and results
-    const results = [];
-    for (const submission of room.submissions) {
-        const votes = Array.from(submission.votes.entries()).map(([playerId, vote]) => ({
-            playerId,
-            vote
-        }));
-        
-        const yesCount = votes.filter(v => v.vote).length;
-        const noCount = votes.length - yesCount;
-        const points = Math.min(yesCount, noCount); // Smaller split gets points
-        
-        // Award points to submitter
-        const submitter = room.players.get(submission.playerId);
-        if (submitter) {
-            submitter.score += points;
-
-            await updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
-            await updateSubmissionResults(points, yesCount, noCount, room.currentRoundDbId, submitter.dbPlayerId);
-        }
-        
-        results.push({
-            exemplar: submission.exemplar,
-            submittedBy: submission.nickname,
-            votes: votes,
-            yesCount,
-            noCount,
-            points
-        });
-    }
-
-    // Store results in room for GM navigation
-    room.currentResults = results;
-    room.currentResultIndex = -1; // Start before first result
-
-    const gameStateData = {
-        gameState: room.gameState,
-        players: Array.from(room.players.values()).map(p => ({
-            nickname: p.nickname,
-            score: p.score,
-            hasSubmitted: p.hasSubmitted,
-            hasVoted: p.hasVoted
-        }))
-    };
-
-    // Send to players
-    io.to(room.code).emit('game-state-update', gameStateData);
-    
-    // Send to GM with navigation controls
-    socket.emit('results-ready', {
-        totalResults: results.length,
-        currentIndex: -1
-    });
-
-    // Initialize results mode on display
-    if (room.displaySocketId) {
-        io.to(room.displaySocketId).emit('results-mode-start', {
-            totalResults: results.length
-        });
-    }
-
-    console.log(`Results ready for room ${room.code}, ${results.length} exemplars`);
-});
-
-// GM navigates through results
-socket.on('show-next-result', () => {
-    const room = findRoomBySocket(socket.id);
-    if (!room || room.gmSocketId !== socket.id || !room.currentResults) {
-        socket.emit('error', { message: 'Not authorized or no results ready' });
-        return;
-    }
-
-    if (room.currentResultIndex < room.currentResults.length - 1) {
-        room.currentResultIndex++;
-        const result = room.currentResults[room.currentResultIndex];
-        
-        // Send to GM
-        socket.emit('result-navigation', {
-            currentIndex: room.currentResultIndex,
-            totalResults: room.currentResults.length,
-            canGoNext: room.currentResultIndex < room.currentResults.length - 1,
-            canGoPrev: room.currentResultIndex > 0
-        });
-
-        // Send to display
-        if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('show-exemplar-result', {
-                exemplar: result.exemplar,
-                submittedBy: result.submittedBy,
-                votes: result.votes,
-                yesCount: result.yesCount,
-                noCount: result.noCount,
-                points: result.points,
-                currentIndex: room.currentResultIndex,
-                totalResults: room.currentResults.length
-            });
-        }
-    }
-});
-
-socket.on('show-prev-result', () => {
-    const room = findRoomBySocket(socket.id);
-    if (!room || room.gmSocketId !== socket.id || !room.currentResults) {
-        socket.emit('error', { message: 'Not authorized or no results ready' });
-        return;
-    }
-
-    if (room.currentResultIndex > 0) {
-        room.currentResultIndex--;
-        const result = room.currentResults[room.currentResultIndex];
-        
-        // Send to GM
-        socket.emit('result-navigation', {
-            currentIndex: room.currentResultIndex,
-            totalResults: room.currentResults.length,
-            canGoNext: room.currentResultIndex < room.currentResults.length - 1,
-            canGoPrev: room.currentResultIndex > 0
-        });
-
-        // Send to display
-        if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('show-exemplar-result', {
-                exemplar: result.exemplar,
-                submittedBy: result.submittedBy,
-                votes: result.votes,
-                yesCount: result.yesCount,
-                noCount: result.noCount,
-                points: result.points,
-                currentIndex: room.currentResultIndex,
-                totalResults: room.currentResults.length
-            });
-        }
-    }
-});
-
-// GM shows final summary (top/bottom controversial)
-// GM shows final summary (enhanced logic for different numbers of exemplars)
-socket.on('show-final-summary', () => {
-    const room = findRoomBySocket(socket.id);
-    if (!room || room.gmSocketId !== socket.id || !room.currentResults) {
-        socket.emit('error', { message: 'Not authorized or no results ready' });
-        return;
-    }
-
-    // Sort by points (most to least), then by controversy as tiebreaker
-    const sortedByPoints = [...room.currentResults].sort((a, b) => {
-        if (a.points !== b.points) {
-            return b.points - a.points; // Most points first
-        }
-        // Tiebreaker: more controversial (closer to 50/50) first
-        const aControversy = Math.abs(a.yesCount - a.noCount);
-        const bControversy = Math.abs(b.yesCount - b.noCount);
-        return aControversy - bControversy;
-    });
-
-    let displayData;
-    
-    if (sortedByPoints.length <= 6) {
-        // Show all exemplars if 6 or fewer
-        displayData = {
-            showAll: true,
-            allResults: sortedByPoints,
-            title: `All ${sortedByPoints.length} Exemplars (Most to Least Points)`
-        };
-    } else {
-        // Show top 3 and bottom 3 if more than 6
-        const topResults = sortedByPoints.slice(0, 3);
-        const bottomResults = sortedByPoints.slice(-3);
-        
-        displayData = {
-            showAll: false,
-            topResults: topResults,
-            bottomResults: bottomResults,
-            title: 'Top & Bottom Scoring Exemplars'
-        };
-    }
-
-    if (room.displaySocketId) {
-        io.to(room.displaySocketId).emit('show-enhanced-summary', displayData);
-    }
-
-    socket.emit('summary-shown');
-});
-
-// GM shows scoreboard (game-wide, not per round)
-socket.on('show-round-scoreboard', () => {
-    const room = findRoomBySocket(socket.id);
-    if (!room || room.gmSocketId !== socket.id) {
-        socket.emit('error', { message: 'Not authorized' });
-        return;
-    }
-
-    const sortedPlayers = Array.from(room.players.values())
-        .map(p => ({ nickname: p.nickname, score: p.score }))
-        .sort((a, b) => b.score - a.score);
-
-    if (room.displaySocketId) {
-        io.to(room.displaySocketId).emit('show-round-scoreboard', {
-            players: sortedPlayers,
-            round: room.round,
-            isGameWide: true  // Flag to indicate this is cumulative scoring
-        });
-    }
-
-    socket.emit('scoreboard-shown');
+    startResultsPhase(room);
 });
 
     // GM starts next round
@@ -978,7 +1117,7 @@ socket.on('show-round-scoreboard', () => {
         console.log(`Game ended in room ${room.code}`);
     });
 
-    // Handle disconnections
+// Handle disconnections
     socket.on('disconnect', async () => {
         console.log('Client disconnected:', socket.id);
         
@@ -1027,6 +1166,11 @@ socket.on('show-round-scoreboard', () => {
                 }
 
                 console.log(`Player ${player?.nickname} left room ${roomCode}`);
+            }
+            
+            // Cancel any active timers for this room (happens regardless of who disconnected)
+            if (room.currentTimer) {
+                room.currentTimer.cancel();
             }
         }
     });

@@ -256,6 +256,96 @@
             background: rgba(255,215,0,0.3);
         }
 
+        /* Timer styles for mobile players */
+        .player-timer {
+            background: rgba(255,255,255,0.15);
+            padding: 0.8rem 1.2rem;
+            border-radius: 25px;
+            margin: 0.5rem 0;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .timer-text {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 0.3rem;
+        }
+
+        .timer-countdown-mobile {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #ffd700;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .timer-countdown-mobile.warning {
+            color: #ffa726;
+            animation: mobilePulse 1s infinite;
+        }
+
+        .timer-countdown-mobile.critical {
+            color: #ff6b6b;
+            animation: mobilePulse 0.5s infinite;
+        }
+
+        .timer-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+
+        .timer-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ecdc4, #44a08d);
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+
+        .timer-bar-fill.warning {
+            background: linear-gradient(90deg, #ffa726, #ff9800);
+        }
+
+        .timer-bar-fill.critical {
+            background: linear-gradient(90deg, #ff6b6b, #ee5a24);
+        }
+
+        @keyframes mobilePulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .timer-completed {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+        }
+
+        .timer-completed .timer-countdown-mobile {
+            color: #4caf50;
+        }
+
+        .early-completion-message {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+            font-style: italic;
+            margin-top: 0.3rem;
+        }
+
+        /* Hide timer when not active */
+        .player-timer.hidden {
+            display: none;
+        }
+
         @keyframes scoreUpdate {
             0% {
                 transform: scale(1);
@@ -330,6 +420,16 @@
                     <span id="gameStatus">Waiting for game to start...</span>
                     <span class="score-display" id="playerScore">0 pts</span>
                 </div>
+                <div class="player-timer hidden" id="playerTimer">
+                    <div class="timer-text" id="playerTimerLabel">Time Remaining</div>
+                    <div class="timer-countdown-mobile" id="playerTimerCountdown">0:00</div>
+                    <div class="timer-bar">
+                        <div class="timer-bar-fill" id="playerTimerBar"></div>
+                    </div>
+                    <div class="early-completion-message hidden" id="earlyCompletionMsg">
+                        Waiting for other players...
+                    </div>
+                </div>   
             </div>
 
             <!-- Game phases -->
@@ -393,6 +493,21 @@
         const joinError = document.getElementById('joinError');
         const playerScore = document.getElementById('playerScore');
         let currentPlayerScore = 0;
+
+        // Timer-related DOM elements
+        const playerTimer = document.getElementById('playerTimer');
+        const playerTimerLabel = document.getElementById('playerTimerLabel');
+        const playerTimerCountdown = document.getElementById('playerTimerCountdown');
+        const playerTimerBar = document.getElementById('playerTimerBar');
+        const earlyCompletionMsg = document.getElementById('earlyCompletionMsg');
+
+        let playerTimerState = {
+            remaining: 0,
+            total: 0,
+            phase: '',
+            isActive: false,
+            hasCompleted: false
+        };
 
         // Auto-format room code input
         roomCodeInput.addEventListener('input', (e) => {
@@ -487,6 +602,7 @@
             socket.emit('submit-votes', { votes });
             submitVotesBtn.disabled = true;
             submitVotesBtn.textContent = 'Votes Submitted!';
+            showEarlyCompletion('voting');
         });
 
         // Socket events
@@ -497,6 +613,10 @@
             
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
+        });
+
+        socket.on('timer-update', (data) => {
+            updatePlayerTimer(data.remaining, data.phase);
         });
 
         socket.on('join-error', (data) => {
@@ -525,8 +645,9 @@
         });
 
         socket.on('submission-confirmed', (data) => {
-            // Server confirms our submission was received
             console.log('Submission confirmed:', data.exemplar);
+            // Show early completion state
+            showEarlyCompletion('submission');
         });
 
         socket.on('gm-disconnected', () => {
@@ -559,7 +680,108 @@
             }
         }
 
+        function updatePlayerTimer(remaining, phase) {
+            playerTimerState.remaining = remaining;
+            playerTimerState.phase = phase;
+            playerTimerState.isActive = remaining > 0;
+            
+            if (!playerTimerState.isActive) {
+                playerTimer.classList.add('hidden');
+                return;
+            }
+            
+            // Show timer
+            playerTimer.classList.remove('hidden');
+            
+            // Update countdown display
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            playerTimerCountdown.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Update label based on phase
+            const phaseLabels = {
+                'submission': 'Submit Your Exemplar',
+                'voting': 'Vote on All Exemplars',
+                'results': 'Check Display for Results'
+            };
+            
+            playerTimerLabel.textContent = phaseLabels[phase] || 'Time Remaining';
+            
+            // Initialize total time on first update of phase
+            if (playerTimerState.total === 0) {
+                playerTimerState.total = remaining;
+                playerTimerState.hasCompleted = false;
+                // Reset early completion styling
+                playerTimer.classList.remove('timer-completed');
+                earlyCompletionMsg.classList.add('hidden');
+            }
+            
+            // Update progress bar
+            const progress = ((playerTimerState.total - remaining) / playerTimerState.total) * 100;
+            playerTimerBar.style.width = `${progress}%`;
+            
+            // Apply warning styles
+            const percentRemaining = (remaining / playerTimerState.total) * 100;
+            
+            // Remove existing classes
+            playerTimerCountdown.classList.remove('warning', 'critical');
+            playerTimerBar.classList.remove('warning', 'critical');
+            
+            if (percentRemaining <= 10) {
+                playerTimerCountdown.classList.add('critical');
+                playerTimerBar.classList.add('critical');
+            } else if (percentRemaining <= 25) {
+                playerTimerCountdown.classList.add('warning');
+                playerTimerBar.classList.add('warning');
+            }
+        }
+
+        // Function to show early completion state
+        function showEarlyCompletion(phase) {
+            if (playerTimerState.hasCompleted) return;
+            
+            playerTimerState.hasCompleted = true;
+            playerTimer.classList.add('timer-completed');
+            earlyCompletionMsg.classList.remove('hidden');
+            
+            const messages = {
+                'submission': 'Submitted! Waiting for others...',
+                'voting': 'Voted! Waiting for others...'
+            };
+            
+            earlyCompletionMsg.textContent = messages[phase] || 'Complete! Waiting for others...';
+        }
+
+        // Reset timer state
+        function resetPlayerTimer() {
+            playerTimerState = {
+                remaining: 0,
+                total: 0,
+                phase: '',
+                isActive: false,
+                hasCompleted: false
+            };
+            playerTimer.classList.add('hidden');
+            playerTimer.classList.remove('timer-completed');
+            earlyCompletionMsg.classList.add('hidden');
+        }
+
         function updateGamePhase(gameState, data) {
+            // Reset timer when phase changes
+            if (gameState !== playerTimerState.phase) {
+                resetPlayerTimer();
+            }
+            
+            // Initialize timer for new phases
+            if (data.timerRemaining && data.timerRemaining > 0) {
+                const phase = gameState === 'submitting' ? 'submission' : 
+                            gameState === 'voting' ? 'voting' : '';
+                if (phase) {
+                    playerTimerState.total = data.timerRemaining;
+                    updatePlayerTimer(data.timerRemaining, phase);
+                }
+            }
+
             // Update player's own score if available
             if (data.players) {
                 const myPlayer = data.players.find(p => p.nickname === currentNickname);
@@ -606,11 +828,13 @@
                     gameStatusDisplay.textContent = 'Check the display for results!';
                     waitingPhase.classList.remove('hidden');
                     waitingMessage.textContent = 'Results are being shown on the main display';
+                    resetPlayerTimer(); // Hide timer during results
                     break;
                     
                 default:
                     waitingPhase.classList.remove('hidden');
                     waitingMessage.textContent = 'Waiting for next phase...';
+                    resetPlayerTimer();
             }
         }
 

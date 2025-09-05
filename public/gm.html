@@ -118,6 +118,129 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
         }
 
+        /* Timer status display for GM */
+        .timer-status {
+            background: #e8f4fd;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .timer-info {
+            flex: 1;
+        }
+
+        .timer-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .timer-details {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .timer-display-gm {
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .timer-countdown-gm {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 0.3rem;
+        }
+
+        .timer-countdown-gm.warning {
+            color: #ff9800;
+        }
+
+        .timer-countdown-gm.critical {
+            color: #f44336;
+            animation: gmTimerPulse 1s infinite;
+        }
+
+        .timer-phase-gm {
+            font-size: 0.8rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        @keyframes gmTimerPulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .timer-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .timer-control-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .timer-control-btn:hover {
+            background: #5a6268;
+        }
+
+        .timer-control-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .early-completion-indicator {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        /* Auto-mode indicator */
+        .auto-mode-indicator {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .auto-mode-indicator::before {
+            content: "🤖 ";
+        }
+
+        /* Hide timer when not active */
+        .timer-status.hidden {
+            display: none;
+        }
+
         .phase-display {
             background: #e8f4fd;
             border: 2px solid #667eea;
@@ -210,6 +333,34 @@
                 <button id="startGameBtn" class="button" disabled>Start Game (Need at least 2 players)</button>
             </div>
 
+            <div class="auto-mode-indicator">
+                Autonomous Mode Active - Game will advance automatically
+            </div>
+
+            <div class="timer-status hidden" id="gmTimerStatus">
+                <div class="timer-info">
+                    <div class="timer-title" id="gmTimerTitle">Current Phase Timer</div>
+                    <div class="timer-details" id="gmTimerDetails">Players are submitting exemplars</div>
+                    <div class="early-completion-indicator hidden" id="earlyCompletionIndicator">
+                        All players completed early! Advancing soon...
+                    </div>
+                </div>
+                
+                <div class="timer-display-gm">
+                    <div class="timer-countdown-gm" id="gmTimerCountdown">2:00</div>
+                    <div class="timer-phase-gm" id="gmTimerPhase">SUBMISSION</div>
+                </div>
+                
+                <div class="timer-controls">
+                    <button class="timer-control-btn" id="skipPhaseBtn" title="Skip to next phase">
+                        Skip Phase
+                    </button>
+                    <button class="timer-control-btn" id="addTimeBtn" title="Add 30 seconds" disabled>
+                        +30s
+                    </button>
+                </div>
+            </div>
+
             <div class="game-controls hidden" id="gameControls">
                 <h3>Game Controls</h3>
                 
@@ -232,26 +383,7 @@
                 </div>
                 
                 <div id="resultsSection" class="hidden">
-                    <div id="resultsNavigation" class="hidden">
-                        <p>Navigate through exemplar results:</p>
-                        <div style="display: flex; gap: 1rem; align-items: center; margin: 1rem 0;">
-                            <button id="prevResultBtn" class="button secondary" disabled>← Previous</button>
-                            <span id="resultProgress">0 / 0</span>
-                            <button id="nextResultBtn" class="button">Next →</button>
-                        </div>
-                        <p id="currentResultInfo" style="margin: 1rem 0; font-style: italic;"></p>
-                    </div>
-                    
-                    <div id="summaryControls" class="hidden">
-                        <p>All exemplars shown. Show summary:</p>
-                        <button id="showSummaryBtn" class="button">Show Most/Least Controversial</button>
-                    </div>
-                    
-                    <div id="scoreboardControls" class="hidden">
-                        <p>Summary shown. Show round results:</p>
-                        <button id="showScoreboardBtn" class="button">Show Round Scoreboard</button>
-                    </div>
-                    
+                    <p>Results are displaying automatically on the main screen.</p>
                     <div id="finalControls" class="hidden">
                         <p>Round complete!</p>
                         <button id="nextRoundBtn" class="button">Next Round</button>
@@ -307,16 +439,26 @@
         const votingStatus = document.getElementById('votingStatus');
         const displayPreview = document.getElementById('displayPreview');
 
-        const resultsNavigation = document.getElementById('resultsNavigation');
-        const summaryControls = document.getElementById('summaryControls');
-        const scoreboardControls = document.getElementById('scoreboardControls');
-        const finalControls = document.getElementById('finalControls');
-        const prevResultBtn = document.getElementById('prevResultBtn');
-        const nextResultBtn = document.getElementById('nextResultBtn');
         const resultProgress = document.getElementById('resultProgress');
         const currentResultInfo = document.getElementById('currentResultInfo');
-        const showSummaryBtn = document.getElementById('showSummaryBtn');
-        const showScoreboardBtn = document.getElementById('showScoreboardBtn');
+
+        // Timer-related DOM elements for GM
+        const gmTimerStatus = document.getElementById('gmTimerStatus');
+        const gmTimerTitle = document.getElementById('gmTimerTitle');
+        const gmTimerDetails = document.getElementById('gmTimerDetails');
+        const gmTimerCountdown = document.getElementById('gmTimerCountdown');
+        const gmTimerPhase = document.getElementById('gmTimerPhase');
+        const earlyCompletionIndicator = document.getElementById('earlyCompletionIndicator');
+        const skipPhaseBtn = document.getElementById('skipPhaseBtn');
+        const addTimeBtn = document.getElementById('addTimeBtn');
+
+        let gmTimerState = {
+            remaining: 0,
+            total: 0,
+            phase: '',
+            isActive: false,
+            canSkip: false
+        };
 
         // Create room
         createRoomBtn.addEventListener('click', () => {
@@ -354,21 +496,7 @@
         nextRoundBtn.addEventListener('click', () => {
             socket.emit('next-round');
         });
-        prevResultBtn.addEventListener('click', () => {
-            socket.emit('show-prev-result');
-        });
 
-        nextResultBtn.addEventListener('click', () => {
-            socket.emit('show-next-result');
-        });
-
-        showSummaryBtn.addEventListener('click', () => {
-            socket.emit('show-final-summary');
-        });
-
-        showScoreboardBtn.addEventListener('click', () => {
-            socket.emit('show-round-scoreboard');
-        });
         // End game
         endGameBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to end the game?')) {
@@ -399,6 +527,11 @@
             }
         });
 
+        // Handle timer updates
+        socket.on('timer-update', (data) => {
+            updateGMTimer(data.remaining, data.phase);
+        });
+
         socket.on('game-started', (data) => {
             console.log('Game started:', data);
             currentPhaseDisplay.textContent = 'Game Active - Set first category';
@@ -406,63 +539,6 @@
             categorySection.classList.remove('hidden');
             startGameBtn.style.display = 'none';
             displayPreview.textContent = 'Display shows: Waiting for first category';
-        });
-
-        socket.on('results-ready', (data) => {
-            console.log('Results ready:', data);
-            currentPhaseDisplay.textContent = 'Results ready - navigate through exemplars';
-            
-            // Show navigation controls
-            resultsNavigation.classList.remove('hidden');
-            summaryControls.classList.add('hidden');
-            scoreboardControls.classList.add('hidden');
-            finalControls.classList.add('hidden');
-            
-            // Update progress
-            resultProgress.textContent = `0 / ${data.totalResults}`;
-            currentResultInfo.textContent = 'Click "Next" to show first exemplar result';
-            
-            // Enable next button
-            nextResultBtn.disabled = false;
-            prevResultBtn.disabled = true;
-            
-            displayPreview.textContent = 'Display shows: Waiting for first result...';
-        });
-
-        socket.on('result-navigation', (data) => {
-            console.log('Result navigation:', data);
-            
-            // Update progress
-            resultProgress.textContent = `${data.currentIndex + 1} / ${data.totalResults}`;
-            currentResultInfo.textContent = `Showing exemplar ${data.currentIndex + 1}`;
-            
-            // Update button states
-            prevResultBtn.disabled = !data.canGoPrev;
-            nextResultBtn.disabled = !data.canGoNext;
-            
-            // If this was the last result, show summary controls
-            if (!data.canGoNext) {
-                summaryControls.classList.remove('hidden');
-                currentResultInfo.textContent = `All ${data.totalResults} exemplars shown. Ready for summary.`;
-            }
-            
-            displayPreview.textContent = `Display shows: Exemplar ${data.currentIndex + 1} voting results`;
-        });
-
-        socket.on('summary-shown', () => {
-            console.log('Summary shown');
-            currentPhaseDisplay.textContent = 'Controversy summary displayed';
-            summaryControls.classList.add('hidden');
-            scoreboardControls.classList.remove('hidden');
-            displayPreview.textContent = 'Display shows: Most/least controversial exemplars';
-        });
-
-        socket.on('scoreboard-shown', () => {
-            console.log('Scoreboard shown');
-            currentPhaseDisplay.textContent = 'Round scoreboard displayed';
-            scoreboardControls.classList.add('hidden');
-            finalControls.classList.remove('hidden');
-            displayPreview.textContent = 'Display shows: Round scoreboard';
         });
 
         socket.on('game-state-update', (data) => {
@@ -473,6 +549,120 @@
         function updatePlayerCount(count) {
             playerCountDisplay.textContent = count;
         }
+
+
+        function updateGMTimer(remaining, phase) {
+            gmTimerState.remaining = remaining;
+            gmTimerState.phase = phase;
+            gmTimerState.isActive = remaining > 0;
+            
+            if (!gmTimerState.isActive) {
+                gmTimerStatus.classList.add('hidden');
+                return;
+            }
+            
+            // Show timer
+            gmTimerStatus.classList.remove('hidden');
+            
+            // Initialize total on first update of phase
+            if (gmTimerState.total === 0 || gmTimerState.phase !== phase) {
+                gmTimerState.total = remaining;
+                gmTimerState.phase = phase;
+                earlyCompletionIndicator.classList.add('hidden');
+            }
+            
+            // Update countdown display
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            gmTimerCountdown.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Update phase information
+            const phaseInfo = {
+                'submission': {
+                    title: 'Submission Phase',
+                    details: 'Players are submitting exemplars for the category',
+                    phase: 'SUBMISSION'
+                },
+                'voting': {
+                    title: 'Voting Phase', 
+                    details: 'Players are voting on all submitted exemplars',
+                    phase: 'VOTING'
+                },
+                'results': {
+                    title: 'Results Phase',
+                    details: 'Displaying results automatically',
+                    phase: 'RESULTS'
+                }
+            };
+            
+            const info = phaseInfo[phase] || { title: 'Active Phase', details: 'Phase in progress', phase: 'ACTIVE' };
+            gmTimerTitle.textContent = info.title;
+            gmTimerDetails.textContent = info.details;
+            gmTimerPhase.textContent = info.phase;
+            
+            // Apply warning styles
+            const percentRemaining = (remaining / gmTimerState.total) * 100;
+            
+            gmTimerCountdown.classList.remove('warning', 'critical');
+            
+            if (percentRemaining <= 10) {
+                gmTimerCountdown.classList.add('critical');
+            } else if (percentRemaining <= 25) {
+                gmTimerCountdown.classList.add('warning');
+            }
+            
+            // Enable skip button during submission and voting phases
+            gmTimerState.canSkip = (phase === 'submission' || phase === 'voting');
+            skipPhaseBtn.disabled = !gmTimerState.canSkip;
+        }
+
+        // Function to show early completion state
+        function showGMEarlyCompletion() {
+            earlyCompletionIndicator.classList.remove('hidden');
+        }
+
+        // Reset GM timer
+        function resetGMTimer() {
+            gmTimerState = {
+                remaining: 0,
+                total: 0,
+                phase: '',
+                isActive: false,
+                canSkip: false
+            };
+            gmTimerStatus.classList.add('hidden');
+            earlyCompletionIndicator.classList.add('hidden');
+        }
+
+        // Skip phase button handler
+        skipPhaseBtn.addEventListener('click', () => {
+            if (!gmTimerState.canSkip) return;
+            
+            if (confirm(`Skip the current ${gmTimerState.phase} phase and advance immediately?`)) {
+                // Emit skip event to server
+                socket.emit('skip-phase');
+            }
+        });
+
+        // Add time button handler (for future extension)
+        addTimeBtn.addEventListener('click', () => {
+            socket.emit('add-time', { seconds: 30 });
+        });
+
+        // Handle early completion notifications
+        socket.on('early-completion', (data) => {
+            showGMEarlyCompletion();
+            
+            // Update details to show completion status
+            const completionTexts = {
+                'submission': `All ${data.totalPlayers} players have submitted! Advancing in ${data.delaySeconds} seconds...`,
+                'voting': `All ${data.totalPlayers} players have voted! Advancing in ${data.delaySeconds} seconds...`
+            };
+            
+            if (completionTexts[data.phase]) {
+                gmTimerDetails.textContent = completionTexts[data.phase];
+            }
+        });
 
         function updatePlayerList(players) {
             if (players.length === 0) {
@@ -489,10 +679,27 @@
         }
 
         function updateGamePhase(gameState, data) {
+
+            // Reset timer when phase changes
+            if (gameState !== gmTimerState.phase) {
+                resetGMTimer();
+            }
+            
+            // Initialize timer display for timed phases
+            if (data.timerRemaining && data.timerRemaining > 0) {
+                const phase = gameState === 'submitting' ? 'submission' : 
+                            gameState === 'voting' ? 'voting' : '';
+                if (phase) {
+                    updateGMTimer(data.timerRemaining, phase);
+                }
+            }
+
             // Hide all sections first
             [categorySection, submissionSection, votingSection, resultsSection].forEach(section => {
                 section.classList.add('hidden');
             });
+
+
 
             switch(gameState) {
                 case 'waiting-for-category':
@@ -500,6 +707,7 @@
                     categorySection.classList.remove('hidden');
                     roundNumber.textContent = data.round || 1;
                     displayPreview.textContent = 'Display shows: Waiting for category';
+                    resetGMTimer(); // No timer during category setup
                     break;
                     
                 case 'submitting':
@@ -518,19 +726,23 @@
                     break;
                     
                 case 'results':
-                    currentPhaseDisplay.textContent = 'Preparing results...';
+                    currentPhaseDisplay.textContent = 'Auto-displaying results...';
                     resultsSection.classList.remove('hidden');
-                    // Hide all sub-controls initially - they'll be shown by results-ready event
-                    resultsNavigation.classList.add('hidden');
-                    summaryControls.classList.add('hidden');
-                    scoreboardControls.classList.add('hidden');
-                    finalControls.classList.add('hidden');
-                    displayPreview.textContent = 'Display shows: Calculating results...';
+                    // Hide manual navigation since it's now automatic
+                    displayPreview.textContent = 'Display shows: Automated results sequence';
+                    resetGMTimer(); // Results are auto-timed internally
                     break;
             }
         }
 
         function updateSubmissionStatus(players) {
+            const submitted = players.filter(p => p.hasSubmitted).length;
+            const total = players.length;
+            
+            if (submitted === total && total > 0) {
+                showGMEarlyCompletion();
+            }
+            
             const statusHtml = players.map(player => {
                 const hasSubmitted = player.hasSubmitted ? 'submitted' : 'waiting';
                 const statusText = player.hasSubmitted ? 'Submitted' : 'Waiting...';
@@ -544,7 +756,15 @@
             submissionStatus.innerHTML = statusHtml;
         }
 
+        // Update voting status to show completion counts
         function updateVotingStatus(players) {
+            const voted = players.filter(p => p.hasVoted).length;
+            const total = players.length;
+            
+            if (voted === total && total > 0) {
+                showGMEarlyCompletion();
+            }
+            
             const statusHtml = players.map(player => {
                 const hasVoted = player.hasVoted ? 'submitted' : 'waiting';
                 const statusText = player.hasVoted ? 'Voted' : 'Voting...';
