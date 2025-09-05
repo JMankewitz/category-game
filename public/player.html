@@ -103,6 +103,43 @@
             margin-bottom: 2rem;
         }
 
+        .lobby-category-section {
+            background: #f0f7ff;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin: 1.5rem 0;
+            border: 2px solid #e1e5e9;
+        }
+
+        .lobby-category-section h4 {
+            color: #667eea;
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .lobby-category-section p {
+            color: #666;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .lobby-info {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+        }
+
+        .lobby-info p {
+            margin: 0.5rem 0;
+            font-size: 1rem;
+        }
+
+        .lobby-info .waiting-message {
+            font-style: italic;
+            opacity: 0.8;
+        }
+
         .room-info {
             text-align: center;
             font-size: 1.2rem;
@@ -115,13 +152,6 @@
             color: #ffd700;
             margin: 0.5rem 0;
             letter-spacing: 0.1em;
-        }
-
-        .scoreboard {
-            background: rgba(255,255,255,0.95);
-            border-radius: 20px;
-            padding: 1.5rem;
-            color: #333;
         }
 
         .game-content {
@@ -210,25 +240,6 @@
             font-style: italic;
         }
 
-        .player-score {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .player-score:last-child {
-            border-bottom: none;
-        }
-
-        .player-score.current-player {
-            background: #f0f7ff;
-            margin: 0 -1rem;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            border-bottom: 1px solid #e1e5e9;
-        }
 
         .player-score-status {
             display: flex;
@@ -441,7 +452,7 @@
             </div>
 
             <div id="votingPhase" class="game-content hidden">
-                <div class="category-display" id="votingCategoryPlayer">Category: "Furniture"</div>
+                <div class="category-display" id="votingCategoryPlayer"></div>
                 <h3>Vote on each exemplar</h3>
                 <p>Is this item a member of the category?</p>
                 <div id="votingList">
@@ -453,6 +464,27 @@
             <div id="waitingPhase" class="game-content">
                 <div class="waiting-message" id="waitingMessage">Waiting for game to start...</div>
             </div>
+
+            <!-- Lobby Phase -->
+            <div id="lobbyPhase" class="game-content hidden">
+                <div class="category-display">Lobby Phase</div>
+                <p>Waiting for the game to start...</p>
+                
+                <div class="lobby-category-section">
+                    <h4>Submit Category Ideas</h4>
+                    <p>Help build the category pool for this game!</p>
+                    <input type="text" id="categoryInput" class="submission-input" placeholder="e.g., 'things that are round', 'kitchen items'..." maxlength="50">
+                    <button id="submitCategoryBtn" class="button">Submit Category</button>
+                    <div id="categorySuccess" class="hidden" style="color: #4caf50; margin-top: 0.5rem; font-size: 0.9rem;">
+                        Category submitted! Thanks for contributing.
+                    </div>
+                </div>
+                
+                <div class="lobby-info">
+                    <p><span id="lobbyPlayerCount">0</span> players joined</p>
+                    <p class="waiting-message">Waiting for host to start the game...</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -460,7 +492,6 @@
     <script>
         const socket = io();
         let currentRoomCode = null;
-        let currentPlayerId = null;
         let currentNickname = null;
 
         let hasSubmittedThisRound = false;
@@ -501,6 +532,13 @@
         const playerTimerBar = document.getElementById('playerTimerBar');
         const earlyCompletionMsg = document.getElementById('earlyCompletionMsg');
 
+        const lobbyPhase = document.getElementById('lobbyPhase');
+        const categoryInput = document.getElementById('categoryInput');
+        const submitCategoryBtn = document.getElementById('submitCategoryBtn');
+        const categorySuccess = document.getElementById('categorySuccess');
+        const lobbyPlayerCount = document.getElementById('lobbyPlayerCount');
+
+
         let playerTimerState = {
             remaining: 0,
             total: 0,
@@ -508,6 +546,20 @@
             isActive: false,
             hasCompleted: false
         };
+
+        submitCategoryBtn.addEventListener('click', () => {
+            const category = categoryInput.value.trim();
+            if (!category) {
+                alert('Please enter a category');
+                return;
+            }
+            
+            socket.emit('submit-category', { category });
+        });
+
+        categoryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitCategoryBtn.click();
+        });
 
         // Auto-format room code input
         roomCodeInput.addEventListener('input', (e) => {
@@ -588,7 +640,6 @@
         // Submit votes
         submitVotesBtn.addEventListener('click', () => {
             const votes = {};
-            const voteButtons = document.querySelectorAll('.vote-button.selected');
             
             // Collect all votes
             document.querySelectorAll('.voting-item').forEach(item => {
@@ -608,11 +659,22 @@
         // Socket events
         socket.on('join-success', (data) => {
             currentRoomCode = data.roomCode;
-            currentPlayerId = data.playerId;
             currentRoomCodeDisplay.textContent = currentRoomCode;
             
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
+        });
+
+
+        socket.on('category-submitted', (data) => {
+            categoryInput.value = '';
+            categorySuccess.classList.remove('hidden');
+            categorySuccess.textContent = `"${data.category}" submitted! Thanks for contributing.`;
+            
+            // Hide success message after 3 seconds
+            setTimeout(() => {
+                categorySuccess.classList.add('hidden');
+            }, 3000);
         });
 
         socket.on('timer-update', (data) => {
@@ -635,10 +697,6 @@
             }
         });
 
-        socket.on('game-started', (data) => {
-            gameStatusDisplay.textContent = 'Game started!';
-            waitingMessage.textContent = 'Waiting for first category...';
-        });
 
         socket.on('game-state-update', (data) => {
             updateGamePhase(data.gameState, data);
@@ -791,11 +849,21 @@
             }
             
             // Hide all game phases
-            [submissionPhase, votingPhase, waitingPhase].forEach(phase => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase].forEach(phase => {
                 phase.classList.add('hidden');
             });
 
             switch(gameState) {
+
+                case 'lobby':
+                gameStatusDisplay.textContent = 'Submit category ideas';
+                lobbyPhase.classList.remove('hidden');
+                if (data.players) {
+                    lobbyPlayerCount.textContent = data.players.length;
+                }
+                categoryInput.focus();
+                resetPlayerTimer();
+                break;
                 case 'submitting':
                     gameStatusDisplay.textContent = 'Submit an exemplar';
                     categoryDisplay.textContent = `"${data.currentCategory}"`;
