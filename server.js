@@ -130,21 +130,15 @@ function broadcastTimerUpdate(room, remaining, phase) {
 
 async function selectNextCategory(room) {
     try {
-        const availableCategories = await getAvailableCategories(room.dbGameId);
-        
-        if (availableCategories.length === 0) {
-            console.warn(`No categories available for room ${room.code}`);
-            return null;
-        }
-        
-        // Simple random selection
-        const selectedCategory = availableCategories[Math.floor(Math.random() * availableCategories.length)];
-        
-        // Mark as used
-        await markCategoryAsUsed(room.dbGameId, selectedCategory);
-        
-        console.log(`Auto-selected category "${selectedCategory}" for room ${room.code}`);
-        return selectedCategory;
+        const available = await getAvailableCategories(room.dbGameId);
+        if (available.length === 0) return null;
+
+        const playerPool = available.filter(c => !c.isPreset);
+        const pool = playerPool.length ? playerPool : available;  // prefer players
+        const selected = pool[Math.floor(Math.random() * pool.length)]; // random within the chosen pool
+
+        await markCategoryAsUsed(room.dbGameId, selected.text);
+        return selected.text;
     } catch (error) {
         console.error('Error selecting category:', error);
         return null;
@@ -826,18 +820,15 @@ function getAvailableCategories(gameId) {
     return new Promise((resolve, reject) => {
         // Get player submissions first, then presets
         const stmt = db.prepare(`
-            SELECT category_text FROM categories 
-            WHERE game_id = ? AND was_used = 0 
+            SELECT category_text, is_preset
+            FROM categories
+            WHERE game_id = ? AND was_used = 0
             ORDER BY is_preset ASC, submitted_at ASC
-        `);
+            `);
         stmt.all(gameId, (err, rows) => {
-            if (err) {
-                console.error('DB Error getting categories:', err);
-                reject(err);
-            } else {
-                resolve(rows.map(row => row.category_text));
-            }
-        });
+            if (err) reject(err);
+            else resolve(rows.map(r => ({ text: r.category_text, isPreset: !!r.is_preset })));
+            });
         stmt.finalize();
     });
 }
