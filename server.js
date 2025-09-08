@@ -155,8 +155,20 @@ function findPlayerBySocketId(socketId) {
 }
 
 function findRoomBySocketId(socketId) {
+    // First check if it's a player socket
     const mapping = socketToPlayer.get(socketId);
-    return mapping ? rooms.get(mapping.roomCode) : null;
+    if (mapping) {
+        return rooms.get(mapping.roomCode);
+    }
+    
+    // If not a player, check if it's a GM or display socket
+    for (const room of rooms.values()) {
+        if (room.gmSocketId === socketId || room.displaySocketId === socketId) {
+            return room;
+        }
+    }
+    
+    return null;
 }
 
 function updateSocketMapping(socketId, roomCode, playerId) {
