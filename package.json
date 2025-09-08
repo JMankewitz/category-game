@@ -1,6 +1,6 @@
 {
   "name": "category-game",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Real-time multiplayer category boundary research game",
   "main": "server.js",
   "scripts": {
@@ -13,17 +13,18 @@
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.2",
-    "sqlite3": "^5.1.6"
+    "sqlite3": "^5.1.6",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "keywords": [
     "psychology",
-    "research",
+    "language",
     "game",
     "categories"
   ],
-  "author": "Psychology Researcher",
+  "author": "Jess Mankewitz",
   "license": "MIT"
 }
