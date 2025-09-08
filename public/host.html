@@ -423,6 +423,184 @@
             /* Existing bubbles just use the transition for smooth movement */
         }
 
+        .category-submissions {
+            margin-top: 2rem;
+            max-width: 80vw;
+        }
+
+        .category-subtitle {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+            text-align: center;
+        }
+
+        .category-bubbles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin: 0 auto;
+            max-width: 800px;
+            min-height: 80px;
+            align-items: center;
+        }
+
+        .category-bubble {
+            background: rgba(255,255,255,0.8);
+            color: #333;
+            padding: 0.8rem 1.2rem;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            font-weight: 500;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            border-left: 4px solid #667eea;
+        }
+
+        .category-bubble.new {
+            transform: scale(0);
+            animation: categoryPop 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+        }
+
+        .category-bubble::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+
+        .category-bubble:hover::before {
+            left: 100%;
+        }
+
+        @keyframes categoryPop {
+            0% {
+                transform: scale(0) rotate(-180deg);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.1) rotate(90deg);
+            }
+            100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 1;
+            }
+        }
+
+        .no-categories-message {
+            font-size: 1.3rem;
+            opacity: 0.6;
+            font-style: italic;
+            color: rgba(255,255,255,0.8);
+        }
+
+        /* Host controls */
+        .host-controls {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            min-width: 400px;
+        }
+
+        .host-section h3 {
+            color: #333;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-size: 1.3rem;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .host-input {
+            flex: 1;
+            padding: 0.8rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .host-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .host-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .host-button:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .start-game-button {
+            width: 100%;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .start-game-button:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .start-game-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @media (max-width: 768px) {
+            .host-controls {
+                position: relative;
+                margin-top: 2rem;
+                left: auto;
+                transform: none;
+                min-width: auto;
+                width: 90%;
+                margin: 2rem auto 0;
+            }
+            
+            .control-group {
+                flex-direction: column;
+            }
+        }
+
         @keyframes bubblePop {
             0% {
                 transform: scale(0) rotate(0deg);
@@ -549,6 +727,43 @@
             </div>
         </div>
 
+        <!-- Lobby/Category Management Screen -->
+        <div id="lobbyScreen" class="hidden">
+            <div class="game-title">Category Game Lobby</div>
+            <div class="phase-message" id="lobbyMessage">Players are joining and submitting categories...</div>
+            
+            <!-- Player bubbles container (reuse existing) -->
+            <div class="players-waiting" id="lobbyPlayersWaiting">
+                <div class="waiting-subtitle">Players Joined:</div>
+                <div class="player-bubbles" id="lobbyPlayerBubbles">
+                    <!-- Player bubbles will appear here -->
+                </div>
+            </div>
+            
+            <!-- Category submissions display -->
+            <div class="category-submissions">
+                <div class="category-subtitle">Categories Submitted:</div>
+                <div class="category-bubbles" id="categoryBubbles">
+                    <div class="no-categories-message">No categories submitted yet...</div>
+                </div>
+            </div>
+            
+            <!-- Host controls -->
+            <div class="host-controls">
+                <div class="host-section">
+                    <h3>Host Controls</h3>
+                    <button id="startGameBtn" class="start-game-button" disabled>
+                        Start Game (Need 2+ players and 3+ categories)
+                    </button>
+                    <div class="control-group">
+                        <input type="text" id="hostCategoryInput" class="host-input" 
+                            placeholder="Add a category..." maxlength="50">
+                        <button id="addCategoryBtn" class="host-button">Add Category</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Category display phase -->
         <div id="categoryScreen" class="hidden">
             <div class="phase-message">Current Category</div>
@@ -617,28 +832,17 @@
             </div>
         </div>
 
-        <!-- Legacy summary results (kept for backwards compatibility) -->
-        <div id="summaryScreen" class="hidden">
-            <div class="phase-message">Round Results</div>
-            <div class="results-container" id="summaryResults">
-                <!-- Results will be populated here -->
-            </div>
-        </div>
-
-        <!-- Legacy scoreboard (kept for backwards compatibility) -->
-        <div id="scoreboardScreen" class="hidden">
-            <div class="scoreboard">
-                <div class="scoreboard-title">Leaderboard</div>
-                <div id="scoreboardList">
-                    <!-- Scores will be populated here -->
-                </div>
-            </div>
-        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io({
+            autoConnect: true,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+            timeout: 5000
+        });
         let currentRoomCode = null;
         let playerCircles = [];
 
@@ -648,8 +852,6 @@
         const categoryScreen = document.getElementById('categoryScreen');
         const votingScreen = document.getElementById('votingScreen');
         const resultsScreen = document.getElementById('resultsScreen');
-        const summaryScreen = document.getElementById('summaryScreen');
-        const scoreboardScreen = document.getElementById('scoreboardScreen');
         const controversySummary = document.getElementById('controversySummary');
         const roundScoreboard = document.getElementById('roundScoreboard');
         
@@ -660,7 +862,6 @@
         const currentExemplar = document.getElementById('currentExemplar');
         const votingArena = document.getElementById('votingArena');
         const splitDisplay = document.getElementById('splitDisplay');
-        const summaryResults = document.getElementById('summaryResults');
         const scoreboardList = document.getElementById('scoreboardList');
         const waitingMessage = document.getElementById('waitingMessage');
         const playersWaiting = document.getElementById('playersWaiting');
@@ -684,6 +885,16 @@
 
         const votingCategoryDisplay = document.getElementById('votingCategoryDisplay');
         
+        const lobbyScreen = document.getElementById('lobbyScreen');
+        const lobbyMessage = document.getElementById('lobbyMessage');
+        const lobbyPlayersWaiting = document.getElementById('lobbyPlayersWaiting');
+        const lobbyPlayerBubbles = document.getElementById('lobbyPlayerBubbles');
+        const categoryBubbles = document.getElementById('categoryBubbles');
+        const hostCategoryInput = document.getElementById('hostCategoryInput');
+        const addCategoryBtn = document.getElementById('addCategoryBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+
+
         let currentTimer = {
             remaining: 0,
             total: 0,
@@ -691,25 +902,73 @@
             isActive: false
         };
 
+        // Host adds category
+        addCategoryBtn.addEventListener('click', () => {
+            const category = hostCategoryInput.value.trim();
+            if (!category) {
+                alert('Please enter a category');
+                return;
+            }
+            
+            socket.emit('host-add-category', { category });
+        });
+
+        // Start game from lobby
+        startGameBtn.addEventListener('click', () => {
+            if (confirm('Start the game? Players will begin submitting exemplars for the first category.')) {
+                socket.emit('start-lobby-game');
+            }
+        });
+
+        hostCategoryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addCategoryBtn.click();
+        });
+
         // Connect to a room (URL parameter or prompt)
         window.addEventListener('load', () => {
+            // Check if this is a host starting a new game vs joining existing display
             const urlParams = new URLSearchParams(window.location.search);
-            const roomCode = urlParams.get('room') || prompt('Enter room code to display:');
+            const existingRoom = urlParams.get('room');
             
-            if (roomCode) {
-                currentRoomCode = roomCode.toUpperCase();
-                roomCodeDisplay.textContent = currentRoomCode;
-                waitingMessage.textContent = 'Connecting to game room...';
-                socket.emit('join-display', { roomCode: currentRoomCode });
+            if (!existingRoom) {
+                // Host is starting new game - create room automatically
+                socket.emit('create-room');
             } else {
-                waitingMessage.textContent = 'No room code provided';
+                // Display joining existing room
+                currentRoomCode = existingRoom.toUpperCase();
+                roomCodeDisplay.textContent = currentRoomCode;
+                socket.emit('join-display', { roomCode: currentRoomCode });
             }
+        });
+
+        // Handle category submissions update
+        socket.on('categories-update', (data) => {
+            updateCategoryBubbles(data.categorySubmissions);
+        });
+
+        socket.on('player-reconnected', (data) => {
+            addPlayerBubble(data.nickname, false);
+        });
+
+        // Handle host category addition confirmation
+        socket.on('category-added', (data) => {
+            hostCategoryInput.value = '';
+            // Could add a brief success indicator here
         });
 
         // Socket events
         socket.on('display-connected', (data) => {
             console.log('Display connected to room:', data.roomCode);
             showScreen('waiting');
+        });
+
+        socket.on('room-update', (data) => {
+            console.log('Room update:', data);
+            
+            if (data.players) {
+                populateInitialBubbles(data.players, lobbyPlayerBubbles);
+                updateStartButtonState(data.playerCount, categoryBubbles.children.length);
+            }
         });
 
         socket.on('display-update', (data) => {
@@ -729,41 +988,39 @@
             removePlayerBubble(data.nickname);
         });
 
-        // Enhanced results event handlers
+        socket.on('room-created', (data) => {
+            currentRoomCode = data.roomCode;
+            roomCodeDisplay.textContent = currentRoomCode;
+
+            socket.emit('join-display', { roomCode: currentRoomCode });
+            // Show lobby screen instead of waiting screen
+            showScreen('lobby');
+            
+            console.log('Room created:', currentRoomCode);
+        });
+
         socket.on('results-mode-start', (data) => {
-            console.log('Results mode starting:', data);
-            showScreen('waiting');
-            waitingMessage.textContent = 'Results incoming...';
+            // Flip to the results interstitial so users see movement
+            showScreen('results'); // your 'results' screen shows the waiting text
         });
 
         socket.on('show-exemplar-result', (data) => {
-            console.log('Showing exemplar result:', data);
+            console.log('show-exemplar-result received:', data.currentIndex + 1, '/', data.totalResults);
             showExemplarResultEnhanced(data);
         });
 
-        socket.on('show-controversy-summary', (data) => {
-            console.log('Showing controversy summary:', data);
-            showControversySummary(data);
-        });
 
         socket.on('show-round-scoreboard', (data) => {
             console.log('Showing round scoreboard:', data);
             showRoundScoreboard(data);
         });
 
-        // Legacy event handlers (kept for backwards compatibility)
-        socket.on('show-summary', (data) => {
-            showSummary(data);
-        });
 
         socket.on('show-enhanced-summary', (data) => {
             console.log('Showing enhanced summary:', data);
             showEnhancedSummary(data);
         });
 
-        socket.on('show-scoreboard', (data) => {
-            showScoreboard(data);
-        });
 
         // Function to update timer display
         function updateTimerDisplay(remaining, phase) {
@@ -794,30 +1051,31 @@
             timerLabel.textContent = phaseLabels[phase] || 'Time Remaining';
             timerPhase.textContent = getPhaseDescription(phase);
             
-            // Update progress bar
+            // Update progress bar with error handling
             if (currentTimer.total === 0) {
-                // First update for this phase - set total
                 currentTimer.total = remaining;
             }
             
-            const progress = ((currentTimer.total - remaining) / currentTimer.total) * 100;
-            timerProgressBar.style.width = `${progress}%`;
-            
-            // Apply warning styles based on time remaining
-            const percentRemaining = (remaining / currentTimer.total) * 100;
-            
-            // Remove existing warning classes
-            timerCountdown.classList.remove('warning', 'critical');
-            timerProgressBar.classList.remove('warning', 'critical');
-            
-            if (percentRemaining <= 10) {
-                timerCountdown.classList.add('critical');
-                timerProgressBar.classList.add('critical');
-            } else if (percentRemaining <= 25) {
-                timerCountdown.classList.add('warning');
-                timerProgressBar.classList.add('warning');
+            if (currentTimer.total > 0) {
+                const progress = Math.min(100, Math.max(0, ((currentTimer.total - remaining) / currentTimer.total) * 100));
+                timerProgressBar.style.width = `${progress}%`;
+                
+                // Apply warning styles
+                const percentRemaining = (remaining / currentTimer.total) * 100;
+                
+                timerCountdown.classList.remove('warning', 'critical');
+                timerProgressBar.classList.remove('warning', 'critical');
+                
+                if (percentRemaining <= 10) {
+                    timerCountdown.classList.add('critical');
+                    timerProgressBar.classList.add('critical');
+                } else if (percentRemaining <= 25) {
+                    timerCountdown.classList.add('warning');
+                    timerProgressBar.classList.add('warning');
+                }
             }
         }
+
 
         // Helper function for phase descriptions
         function getPhaseDescription(phase) {
@@ -830,6 +1088,64 @@
                     return 'Check results';
                 default:
                     return 'Waiting...';
+            }
+        }
+
+        function updateDisplay(data) {
+            console.log('Display update received:', data);
+            
+            switch(data.gameState) {
+                case 'lobby':
+                    showScreen('lobby');
+                    if (data.players) {
+                        populateInitialBubbles(data.players, lobbyPlayerBubbles);
+                        updateStartButtonState(data.players.length, data.categorySubmissions?.length || 0);
+                    }
+                    if (data.categorySubmissions) {
+                        updateCategoryBubbles(data.categorySubmissions);
+                    }
+                    break;
+                    
+                case 'submitting':
+                    showScreen('category');
+                    categoryText.textContent = `"${data.currentCategory}"`;
+                    phaseMessage.textContent = 'Players are submitting exemplars...';
+                    updateSubmissionCounter(data.submittedCount || 0, data.totalPlayers);
+                    break;
+                    
+                case 'voting':
+                    showScreen('voting');
+                    votingCategoryDisplay.textContent = `"${data.currentCategory}"`;
+                    updateVoteCounter(data.votedCount || 0, data.totalPlayers);
+                    break;
+                    
+                case 'results':
+                    waitingMessage.textContent = 'Results are being displayed...';
+                    break;
+                    
+                default:
+                    showScreen('waiting');
+                    waitingMessage.textContent = 'Waiting for game to start...';
+                    if (data.players) {
+                        populateInitialBubbles(data.players);
+                    }
+            }
+        }
+
+        function updateStartButtonState(playerCount, categoryCount) {
+            const minPlayers = 2;
+            const minCategories = 3;
+            const totalCategories = (categoryCount || 0) + 18; // Handle undefined categoryCount
+            
+            if (playerCount >= minPlayers && totalCategories >= minCategories) {
+                startGameBtn.disabled = false;
+                startGameBtn.textContent = `Start Game (${playerCount} players, ${totalCategories} categories)`;
+            } else {
+                startGameBtn.disabled = true;
+                let missing = [];
+                if (playerCount < minPlayers) missing.push(`${minPlayers - playerCount} more players`);
+                if (totalCategories < minCategories) missing.push(`${minCategories - totalCategories} more categories`);
+                startGameBtn.textContent = `Need: ${missing.join(', ')}`;
             }
         }
 
@@ -847,104 +1163,56 @@
         // Display management functions
         function showScreen(screen) {
             [waitingScreen, categoryScreen, votingScreen, resultsScreen, 
-             summaryScreen, scoreboardScreen, controversySummary, roundScoreboard].forEach(s => {
+            controversySummary, roundScoreboard, lobbyScreen].forEach(s => {
                 s.classList.add('hidden');
             });
 
             switch(screen) {
+                case 'lobby':
+                    lobbyScreen.classList.remove('hidden');
+                    lobbyMessage.textContent = 'Players are joining and submitting categories...';
+                    break;
+                    
                 case 'waiting':
                     waitingScreen.classList.remove('hidden');
-                    break;
-                case 'category':
-                    categoryScreen.classList.remove('hidden');
-                    break;
-                case 'voting':
-                    votingScreen.classList.remove('hidden');
-                    break;
-                case 'results':
-                    resultsScreen.classList.remove('hidden');
-                    break;
-                case 'summary':
-                    summaryScreen.classList.remove('hidden');
-                    break;
-                case 'scoreboard':
-                    scoreboardScreen.classList.remove('hidden');
-                    break;
-                case 'controversySummary':
-                    controversySummary.classList.remove('hidden');
-                    break;
-                case 'roundScoreboard':
-                    roundScoreboard.classList.remove('hidden');
-                    break;
-            }
-        }
-
-        function updateDisplay(data) {
-            // Reset timer when game state changes (unless it's the same state)
-                if (data.gameState !== currentTimer.phase) {
-                    resetTimer();
-                }
-                
-                // Handle timer initialization for new phases
-                if (data.timerRemaining && data.timerRemaining > 0) {
-                    const phase = data.gameState === 'submitting' ? 'submission' : 
-                                data.gameState === 'voting' ? 'voting' : '';
-                    if (phase) {
-                        currentTimer.total = data.timerRemaining;
-                        updateTimerDisplay(data.timerRemaining, phase);
-                    }
-                }
-            switch(data.gameState) {
-                case 'waiting':
-                    showScreen('waiting');
                     waitingMessage.textContent = 'Waiting for players to join...';
                     playersWaiting.style.display = 'block';
-                    if (data.players && playerBubbles.children.length === 0) {
-                        populateInitialBubbles(data.players);
-                    }
                     break;
                     
                 case 'waiting-for-category':
-                    showScreen('category');
-                    categoryText.textContent = 'Waiting for category...';
-                    phaseMessage.textContent = 'Game Master is setting up the next round';
+                    categoryScreen.classList.remove('hidden');
+                    categoryText.textContent = 'Need more categories!';
+                    phaseMessage.textContent = 'Host can add categories using the controls below';
                     submissionCounter.style.display = 'none';
                     break;
                     
                 case 'submitting':
-                    showScreen('category');
-                    if (data.currentCategory) {
-                        categoryText.textContent = `"${data.currentCategory}"`;
-                        phaseMessage.textContent = 'Players are submitting exemplars...';
-                        submissionCounter.style.display = 'block';
-                        updateSubmissionCounter(data.submittedCount || 0, data.totalPlayers);
-                    } else {
-                        categoryText.textContent = 'Waiting for category...';
-                        phaseMessage.textContent = 'Game Master is setting up the category';
-                        submissionCounter.style.display = 'none';
-                    }
+                case 'category':
+                    categoryScreen.classList.remove('hidden');
+                    phaseMessage.textContent = 'Players are submitting exemplars...';
+                    submissionCounter.style.display = 'block';
                     break;
                     
                 case 'voting':
-                    showScreen('voting');
-                    // Always update the category display when entering voting phase
-                    if (data.currentCategory) {
-                        votingCategoryDisplay.textContent = `"${data.currentCategory}"`;
-                        console.log('Updated voting category display to:', data.currentCategory);
-                    } else {
-                        console.warn('No currentCategory in voting phase data:', data);
-                    }
-                    updateVoteCounter(data.votedCount || 0, data.totalPlayers);
+                    votingScreen.classList.remove('hidden');
                     break;
                     
                 case 'results':
-                    // Enhanced results mode - waiting for GM to step through
-                    showScreen('waiting');
+                    // Enhanced results mode - waiting for auto progression
+                    waitingScreen.classList.remove('hidden');
                     waitingMessage.textContent = 'Preparing results...';
                     break;
                     
+                case 'controversy':
+                    controversySummary.classList.remove('hidden');
+                    break;
+                    
+                case 'scoreboard':
+                    roundScoreboard.classList.remove('hidden');
+                    break;
+                    
                 default:
-                    showScreen('waiting');
+                    waitingScreen.classList.remove('hidden');
                     waitingMessage.textContent = 'Waiting for game to start...';
                     playersWaiting.style.display = 'block';
                     break;
@@ -953,7 +1221,11 @@
 
         // Enhanced exemplar result display
         function showExemplarResultEnhanced(data) {
-            showScreen('results');
+            // Don't call showScreen('results') - directly show the results screen
+            [waitingScreen, categoryScreen, votingScreen, resultsScreen, controversySummary, roundScoreboard, lobbyScreen]
+                .forEach(s => s && s.classList.add('hidden'));
+            
+            resultsScreen.classList.remove('hidden'); // Show the actual results screen
             
             // Update progress and exemplar text
             resultProgress.textContent = `Result ${data.currentIndex + 1} of ${data.totalResults}`;
@@ -968,6 +1240,59 @@
             
             // Create and animate player circles
             createAndAnimatePlayerCircles(data.votes);
+        }
+
+        // Helper function to update category bubbles
+        function updateCategoryBubbles(categorySubmissions) {
+            if (!categorySubmissions || categorySubmissions.length === 0) {
+                categoryBubbles.innerHTML = '<div class="no-categories-message">No categories submitted yet...</div>';
+                return;
+            }
+
+            // Remove "no categories" message if it exists
+            const noCategoriesMsg = categoryBubbles.querySelector('.no-categories-message');
+            if (noCategoriesMsg) {
+                noCategoriesMsg.remove();
+            }
+
+            // Add new category bubbles with better error handling
+            categorySubmissions.forEach((submission, index) => {
+                // Handle both old and new submission formats
+                const category = submission.category || submission;
+                const nickname = submission.nickname || 'Unknown';
+                
+                // Check if bubble already exists
+                if (document.querySelector(`[data-category="${category}"]`)) {
+                    return;
+                }
+
+                const bubble = document.createElement('div');
+                bubble.className = 'category-bubble new';
+                bubble.textContent = `"${category}" - ${nickname}`;
+                bubble.setAttribute('data-category', category);
+                
+                categoryBubbles.appendChild(bubble);
+                
+                // Remove 'new' class after animation
+                setTimeout(() => {
+                    bubble.classList.remove('new');
+                }, 500);
+            });
+        }
+
+        // Helper function to populate player bubbles (reuse existing logic but allow different containers)
+        function populateInitialBubbles(players, container = playerBubbles) {
+            if (!players || players.length === 0) {
+                container.innerHTML = '<div class="no-players-message">No players yet...</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            players.forEach((player, index) => {
+                setTimeout(() => {
+                    addPlayerBubble(player.nickname, false, container);
+                }, index * 100);
+            });
         }
 
         function createAndAnimatePlayerCircles(votes) {
@@ -1047,7 +1372,7 @@
         }
 
         function showEnhancedSummary(data) {
-            showScreen('controversySummary');
+            showScreen('controversy');
             
             // Update the title
             document.querySelector('#controversySummary .phase-message').textContent = data.title;
@@ -1106,30 +1431,8 @@
             }
         }
 
-        function showControversySummary(data) {
-            showScreen('controversySummary');
-            
-            // Populate most controversial
-            mostControversialList.innerHTML = data.mostControversial.map((item, index) => `
-                <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
-                    <div class="controversy-exemplar">"${item.exemplar}"</div>
-                    <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
-                    <div class="controversy-points">${item.points} points</div>
-                </div>
-            `).join('');
-            
-            // Populate least controversial
-            leastControversialList.innerHTML = data.leastControversial.map((item, index) => `
-                <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
-                    <div class="controversy-exemplar">"${item.exemplar}"</div>
-                    <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
-                    <div class="controversy-points">${item.points} points</div>
-                </div>
-            `).join('');
-        }
-
        function showRoundScoreboard(data) {
-            showScreen('roundScoreboard');
+            showScreen('scoreboard');
             
             // Update title based on whether this is final game results or round results
             let titleText;
@@ -1166,28 +1469,14 @@
             scoreboardList.innerHTML = scoresHtml;
         }
 
-        function populateInitialBubbles(players) {
-            if (!players || players.length === 0) {
-                playerBubbles.innerHTML = '<div class="no-players-message">No players yet...</div>';
-                return;
-            }
-
-            playerBubbles.innerHTML = '';
-            players.forEach((player, index) => {
-                setTimeout(() => {
-                    addPlayerBubble(player.nickname, false);
-                }, index * 100);
-            });
-        }
-
-        function addPlayerBubble(nickname, isNew = false) {
-            // Check if bubble already exists
-            if (document.querySelector(`[data-nickname="${nickname}"]`)) {
+        function addPlayerBubble(nickname, isNew = false, container = playerBubbles) {
+            // Check if bubble already exists in this container
+            if (container.querySelector(`[data-nickname="${nickname}"]`)) {
                 return;
             }
 
             // Remove "no players" message if it exists
-            const noPlayersMsg = playerBubbles.querySelector('.no-players-message');
+            const noPlayersMsg = container.querySelector('.no-players-message');
             if (noPlayersMsg) {
                 noPlayersMsg.remove();
             }
@@ -1210,7 +1499,7 @@
             `;
             bubble.appendChild(shimmer);
             
-            playerBubbles.appendChild(bubble);
+            container.appendChild(bubble);
             
             if (isNew) {
                 setTimeout(() => {
@@ -1244,134 +1533,16 @@
             voteCounter.textContent = `${voted} / ${total} players have voted`;
         }
 
-        // Legacy functions (kept for backwards compatibility)
-        function showExemplarResult(data) {
-            showScreen('results');
-            currentExemplar.textContent = `"${data.exemplar}"`;
-            
-            // Create player circles and animate them
-            createPlayerCircles(data.votes);
-            animateVoteSplit(data.votes);
-            
-            // Update split display
-            const yesCount = data.votes.filter(v => v.vote).length;
-            const noCount = data.votes.length - yesCount;
-            const points = Math.min(yesCount, noCount);
-            
-            splitDisplay.textContent = `Split: ${yesCount} YES, ${noCount} NO (${points} points)`;
-        }
-
-        function createPlayerCircles(votes) {
-            // Clear existing circles
-            votingArena.querySelectorAll('.player-circle').forEach(circle => circle.remove());
-            
-            votes.forEach((vote, index) => {
-                const circle = document.createElement('div');
-                circle.className = 'player-circle';
-                circle.textContent = index + 1;
-                
-                // Start all circles in center
-                circle.style.left = '50%';
-                circle.style.top = '50%';
-                circle.style.transform = 'translate(-50%, -50%)';
-                
-                votingArena.appendChild(circle);
-            });
-        }
-
-        function animateVoteSplit(votes) {
-            const circles = votingArena.querySelectorAll('.player-circle');
-            const yesCircles = [];
-            const noCircles = [];
-            
-            votes.forEach((vote, index) => {
-                if (vote.vote) {
-                    yesCircles.push(circles[index]);
-                } else {
-                    noCircles.push(circles[index]);
-                }
-            });
-            
-            // Animate circles to their sides with staggered timing
-            setTimeout(() => {
-                animateCirclesToSide(yesCircles, 'yes');
-                animateCirclesToSide(noCircles, 'no');
-            }, 500);
-        }
-
-        function animateCirclesToSide(circles, side) {
-            const arena = votingArena.getBoundingClientRect();
-            const sideElement = votingArena.querySelector(`.vote-side.${side}`);
-            const sideRect = sideElement.getBoundingClientRect();
-            
-            circles.forEach((circle, index) => {
-                setTimeout(() => {
-                    // Calculate position within the side
-                    const cols = Math.ceil(Math.sqrt(circles.length));
-                    const row = Math.floor(index / cols);
-                    const col = index % cols;
-                    
-                    const x = (col + 1) * (sideRect.width / (cols + 1));
-                    const y = (row + 1) * (sideRect.height / (Math.ceil(circles.length / cols) + 1));
-                    
-                    circle.style.left = (side === 'yes' ? x : sideRect.width / 2 + x) + 'px';
-                    circle.style.top = y + 'px';
-                    circle.style.transform = 'translate(-50%, -50%)';
-                    
-                    // Add bounce effect
-                    circle.classList.add('bounce');
-                }, index * 100);
-            });
-        }
-
-        function showSummary(data) {
-            showScreen('summary');
-            
-            const resultsHtml = data.results.map(result => {
-                const yesCount = result.votes.filter(v => v.vote).length;
-                const noCount = result.votes.length - yesCount;
-                const yesPercent = (yesCount / (yesCount + noCount)) * 100;
-                const points = Math.min(yesCount, noCount);
-                
-                return `
-                    <div class="exemplar-result slide-in">
-                        <div class="exemplar-text">"${result.exemplar}"</div>
-                        <div class="split-bar">
-                            <div class="split-fill" style="background: linear-gradient(90deg, #28a745 ${yesPercent}%, #dc3545 ${yesPercent}%);">
-                                <div class="split-text">${yesCount} YES / ${noCount} NO</div>
-                            </div>
-                        </div>
-                        <div class="score-display">${points} pts</div>
-                    </div>
-                `;
-            }).join('');
-            
-            summaryResults.innerHTML = resultsHtml;
-        }
-
-        function showScoreboard(data) {
-            showScreen('scoreboard');
-            
-            const sortedPlayers = [...data.players].sort((a, b) => b.score - a.score);
-            
-            const scoresHtml = sortedPlayers.map((player, index) => `
-                <div class="score-item slide-in" style="animation-delay: ${index * 0.1}s">
-                    <div>
-                        <span class="score-rank">#${index + 1}</span>
-                        ${player.nickname}
-                    </div>
-                    <div>${player.score} points</div>
-                </div>
-            `).join('');
-            
-            scoreboardList.innerHTML = scoresHtml;
-        }
-
         // Handle connection errors
-        socket.on('connect_error', () => {
-            alert('Connection error. Please refresh the page.');
+        socket.on('connect_error', (error) => {
+            console.error('Display connection error:', error);
+
         });
 
+        socket.on('disconnect', (reason) => {
+            console.log('Display disconnected:', reason);
+            // Optional: Show reconnection indicator
+        });
         socket.on('error', (data) => {
             alert('Error: ' + data.message);
         });
