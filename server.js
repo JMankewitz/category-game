@@ -208,6 +208,8 @@ function broadcastTimerUpdate(room, remaining, phase) {
 }
 
 function broadcastGameState(room, excludeSocketId = null) {
+    const connectedPlayers = Array.from(room.players.values()).filter(p => p.isConnected);
+    
     const gameStateData = {
         gameState: room.gameState,
         currentCategory: room.currentCategory,
@@ -244,7 +246,7 @@ function broadcastGameState(room, excludeSocketId = null) {
         }
     });
 
-    // Update display
+    // Update display with connected players count
     updateDisplay(room);
 }
 
@@ -252,10 +254,14 @@ function broadcastGameState(room, excludeSocketId = null) {
 function updateDisplay(room) {
     if (!room.displaySocketId) return;
 
+    // Calculate connected players count
+    const connectedPlayers = Array.from(room.players.values()).filter(p => p.isConnected);
+    const connectedPlayersCount = connectedPlayers.length;
+
     const displayData = {
         gameState: room.gameState,
         round: room.round,
-        totalPlayers: room.players.size,
+        totalPlayers: connectedPlayersCount, // Changed from room.players.size
         categorySubmissions: room.categorySubmissions || []
     };
 
@@ -266,15 +272,13 @@ function updateDisplay(room) {
         isConnected: p.isConnected
     }));
 
-    // Add phase-specific data
+    // Add phase-specific data with connected players count
     if (room.gameState === 'submitting') {
         displayData.currentCategory = room.currentCategory;
-        displayData.submittedCount = Array.from(room.players.values())
-            .filter(p => p.hasSubmitted).length;
+        displayData.submittedCount = connectedPlayers.filter(p => p.hasSubmitted).length;
     } else if (room.gameState === 'voting') {
         displayData.currentCategory = room.currentCategory;
-        displayData.votedCount = Array.from(room.players.values())
-            .filter(p => p.hasVoted).length;
+        displayData.votedCount = connectedPlayers.filter(p => p.hasVoted).length;
     }
 
     io.to(room.displaySocketId).emit('display-update', displayData);
@@ -542,11 +546,13 @@ function startVotingPhase(room) {
 
 // Check if all players have voted (early completion)
 function checkVotingComplete(room) {
-    const votedCount = Array.from(room.players.values())
+    const connectedPlayers = Array.from(room.players.values())
+        .filter(p => p.isConnected);
+    const votedCount = connectedPlayers
         .filter(p => p.hasVoted).length;
 
-    if (votedCount === room.players.size && room.players.size > 0) {
-        console.log(`All players voted early in room ${room.code}`);
+    if (votedCount === connectedPlayers.length && connectedPlayers.length > 0) {
+        console.log(`All connected players voted early in room ${room.code} (${votedCount}/${connectedPlayers.length})`);
 
         if (room.currentTimer) {
             room.currentTimer.cancel();
@@ -671,11 +677,13 @@ async function handleSubmitVotes(socket, data) {
 
 // Updated early completion check
 function checkSubmissionComplete(room) {
-    const submittedCount = Array.from(room.players.values())
+    const connectedPlayers = Array.from(room.players.values())
+        .filter(p => p.isConnected);
+    const submittedCount = connectedPlayers
         .filter(p => p.hasSubmitted).length;
     
-    if (submittedCount === room.players.size && room.players.size > 0) {
-        console.log(`All players submitted early in room ${room.code}`);
+    if (submittedCount === connectedPlayers.length && connectedPlayers.length > 0) {
+        console.log(`All connected players submitted early in room ${room.code} (${submittedCount}/${connectedPlayers.length})`);
         
         if (room.currentTimer) {
             room.currentTimer.cancel();
