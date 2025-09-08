@@ -836,7 +836,13 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io({
+            autoConnect: true,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+            timeout: 5000
+        });
         let currentRoomCode = null;
         let playerCircles = [];
 
@@ -940,6 +946,10 @@
             updateCategoryBubbles(data.categorySubmissions);
         });
 
+        socket.on('player-reconnected', (data) => {
+            addPlayerBubble(data.nickname, false);
+        });
+
         // Handle host category addition confirmation
         socket.on('category-added', (data) => {
             hostCategoryInput.value = '';
@@ -1041,28 +1051,28 @@
             timerLabel.textContent = phaseLabels[phase] || 'Time Remaining';
             timerPhase.textContent = getPhaseDescription(phase);
             
-            // Update progress bar
+            // Update progress bar with error handling
             if (currentTimer.total === 0) {
-                // First update for this phase - set total
                 currentTimer.total = remaining;
             }
             
-            const progress = ((currentTimer.total - remaining) / currentTimer.total) * 100;
-            timerProgressBar.style.width = `${progress}%`;
-            
-            // Apply warning styles based on time remaining
-            const percentRemaining = (remaining / currentTimer.total) * 100;
-            
-            // Remove existing warning classes
-            timerCountdown.classList.remove('warning', 'critical');
-            timerProgressBar.classList.remove('warning', 'critical');
-            
-            if (percentRemaining <= 10) {
-                timerCountdown.classList.add('critical');
-                timerProgressBar.classList.add('critical');
-            } else if (percentRemaining <= 25) {
-                timerCountdown.classList.add('warning');
-                timerProgressBar.classList.add('warning');
+            if (currentTimer.total > 0) {
+                const progress = Math.min(100, Math.max(0, ((currentTimer.total - remaining) / currentTimer.total) * 100));
+                timerProgressBar.style.width = `${progress}%`;
+                
+                // Apply warning styles
+                const percentRemaining = (remaining / currentTimer.total) * 100;
+                
+                timerCountdown.classList.remove('warning', 'critical');
+                timerProgressBar.classList.remove('warning', 'critical');
+                
+                if (percentRemaining <= 10) {
+                    timerCountdown.classList.add('critical');
+                    timerProgressBar.classList.add('critical');
+                } else if (percentRemaining <= 25) {
+                    timerCountdown.classList.add('warning');
+                    timerProgressBar.classList.add('warning');
+                }
             }
         }
 
@@ -1125,7 +1135,7 @@
         function updateStartButtonState(playerCount, categoryCount) {
             const minPlayers = 2;
             const minCategories = 3;
-            const totalCategories = categoryCount + 18; // You'll need to define PRESET_CATEGORIES
+            const totalCategories = (categoryCount || 0) + 18; // Handle undefined categoryCount
             
             if (playerCount >= minPlayers && totalCategories >= minCategories) {
                 startGameBtn.disabled = false;
@@ -1245,17 +1255,21 @@
                 noCategoriesMsg.remove();
             }
 
-            // Add new category bubbles
+            // Add new category bubbles with better error handling
             categorySubmissions.forEach((submission, index) => {
+                // Handle both old and new submission formats
+                const category = submission.category || submission;
+                const nickname = submission.nickname || 'Unknown';
+                
                 // Check if bubble already exists
-                if (document.querySelector(`[data-category="${submission.category}"]`)) {
+                if (document.querySelector(`[data-category="${category}"]`)) {
                     return;
                 }
 
                 const bubble = document.createElement('div');
                 bubble.className = 'category-bubble new';
-                bubble.textContent = `"${submission.category}" - ${submission.nickname}`;
-                bubble.setAttribute('data-category', submission.category);
+                bubble.textContent = `"${category}" - ${nickname}`;
+                bubble.setAttribute('data-category', category);
                 
                 categoryBubbles.appendChild(bubble);
                 
@@ -1520,10 +1534,15 @@
         }
 
         // Handle connection errors
-        socket.on('connect_error', () => {
-            alert('Connection error. Please refresh the page.');
+        socket.on('connect_error', (error) => {
+            console.error('Display connection error:', error);
+
         });
 
+        socket.on('disconnect', (reason) => {
+            console.log('Display disconnected:', reason);
+            // Optional: Show reconnection indicator
+        });
         socket.on('error', (data) => {
             alert('Error: ' + data.message);
         });

@@ -19,6 +19,40 @@
             color: white;
         }
 
+        .connection-status {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        .connection-status.connected {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+        }
+
+        .connection-status.disconnected {
+            background: rgba(244, 67, 54, 0.9);
+            color: white;
+            animation: pulse 1s infinite;
+        }
+
+        .connection-status.reconnecting {
+            background: rgba(255, 152, 0, 0.9);
+            color: white;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
         .container {
             max-width: 500px;
             margin: 0 auto;
@@ -399,6 +433,7 @@
     </style>
 </head>
 <body>
+    <div class="connection-status connected" id="connectionStatus">Connected</div>
     <div class="container">
         <!-- Join Form -->
         <div id="joinForm">
@@ -490,15 +525,35 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
-        let currentRoomCode = null;
-        let currentNickname = null;
+        // Enhanced socket management with reconnection
+        let socket = io({
+            autoConnect: true,
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 10,
+            timeout: 5000
+        });
 
+        // Enhanced connection state management
+        let connectionState = {
+            isConnected: false,
+            isReconnecting: false,
+            currentRoomCode: null,
+            currentPlayerId: null,
+            currentNickname: null,
+            gameState: null,
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 10
+        };
+
+        // Game state variables
         let hasSubmittedThisRound = false;
         let mySubmission = '';
         let currentRound = 0;
+        let currentPlayerScore = 0;
 
         // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
         const joinForm = document.getElementById('joinForm');
         const gameArea = document.getElementById('gameArea');
         const roomCodeInput = document.getElementById('roomCodeInput');
@@ -506,11 +561,13 @@
         const joinBtn = document.getElementById('joinBtn');
         const currentRoomCodeDisplay = document.getElementById('currentRoomCode');
         const gameStatusDisplay = document.getElementById('gameStatus');
+        const playerScore = document.getElementById('playerScore');
         
         // Game phase elements
         const submissionPhase = document.getElementById('submissionPhase');
         const votingPhase = document.getElementById('votingPhase');
         const waitingPhase = document.getElementById('waitingPhase');
+        const lobbyPhase = document.getElementById('lobbyPhase');
         const categoryDisplay = document.getElementById('categoryDisplay');
         const exemplarInput = document.getElementById('exemplarInput');
         const submitExemplarBtn = document.getElementById('submitExemplarBtn');
@@ -518,26 +575,24 @@
         const submitVotesBtn = document.getElementById('submitVotesBtn');
         const waitingMessage = document.getElementById('waitingMessage');
         const votingCategoryPlayer = document.getElementById('votingCategoryPlayer');
+
         // Error displays
         const roomCodeError = document.getElementById('roomCodeError');
         const nicknameError = document.getElementById('nicknameError');
         const joinError = document.getElementById('joinError');
-        const playerScore = document.getElementById('playerScore');
-        let currentPlayerScore = 0;
 
-        // Timer-related DOM elements
+        // Timer elements
         const playerTimer = document.getElementById('playerTimer');
         const playerTimerLabel = document.getElementById('playerTimerLabel');
         const playerTimerCountdown = document.getElementById('playerTimerCountdown');
         const playerTimerBar = document.getElementById('playerTimerBar');
         const earlyCompletionMsg = document.getElementById('earlyCompletionMsg');
-
-        const lobbyPhase = document.getElementById('lobbyPhase');
+        
+        // Lobby elements
         const categoryInput = document.getElementById('categoryInput');
         const submitCategoryBtn = document.getElementById('submitCategoryBtn');
         const categorySuccess = document.getElementById('categorySuccess');
         const lobbyPlayerCount = document.getElementById('lobbyPlayerCount');
-
 
         let playerTimerState = {
             remaining: 0,
@@ -547,6 +602,221 @@
             hasCompleted: false
         };
 
+        // Connection status management
+        function updateConnectionStatus(status, message = '') {
+            connectionStatus.className = `connection-status ${status}`;
+            
+            switch(status) {
+                case 'connected':
+                    connectionStatus.textContent = 'Connected';
+                    break;
+                case 'disconnected':
+                    connectionStatus.textContent = message || 'Disconnected';
+                    break;
+                case 'reconnecting':
+                    connectionStatus.textContent = `Reconnecting... (${connectionState.reconnectAttempts}/${connectionState.maxReconnectAttempts})`;
+                    break;
+            }
+        }
+
+        // Enhanced page load handling with automatic reconnection
+        window.addEventListener('load', () => {
+            const savedRoomCode = localStorage.getItem('roomCode');
+            const savedPlayerId = localStorage.getItem('playerId');
+            const savedNickname = localStorage.getItem('nickname');
+            
+            console.log('Page loaded. Saved data:', { savedRoomCode, savedPlayerId, savedNickname });
+            
+            if (savedRoomCode && savedPlayerId && savedNickname) {
+                connectionState.currentRoomCode = savedRoomCode;
+                connectionState.currentPlayerId = savedPlayerId;
+                connectionState.currentNickname = savedNickname;
+                
+                // Wait for socket connection before attempting reconnect
+                if (socket.connected) {
+                    attemptReconnection();
+                } else {
+                    socket.on('connect', attemptReconnection);
+                }
+            }
+        });
+
+        // Enhanced reconnection logic
+        function attemptReconnection() {
+            if (!connectionState.currentRoomCode || !connectionState.currentPlayerId) {
+                console.log('No reconnection data available');
+                return;
+            }
+
+            connectionState.isReconnecting = true;
+            connectionState.reconnectAttempts++;
+            updateConnectionStatus('reconnecting');
+
+            console.log(`Attempting reconnection ${connectionState.reconnectAttempts}...`);
+            
+            socket.emit('reconnect-player', {
+                roomCode: connectionState.currentRoomCode,
+                playerId: connectionState.currentPlayerId
+            });
+        }
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Socket connected');
+            connectionState.isConnected = true;
+            connectionState.reconnectAttempts = 0;
+            
+            if (!connectionState.isReconnecting) {
+                updateConnectionStatus('connected');
+            }
+            
+            // Attempt reconnection if we have saved data
+            if (connectionState.currentRoomCode && connectionState.currentPlayerId && !connectionState.isReconnecting) {
+                attemptReconnection();
+            }
+        });
+
+        socket.on('disconnect', (reason) => {
+            console.log('Socket disconnected:', reason);
+            connectionState.isConnected = false;
+            updateConnectionStatus('disconnected', `Disconnected: ${reason}`);
+        });
+
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            connectionState.reconnectAttempts = attemptNumber;
+            updateConnectionStatus('reconnecting');
+        });
+
+        socket.on('reconnect_failed', () => {
+            updateConnectionStatus('disconnected', 'Reconnection failed');
+            
+            // Clear saved data and return to join form
+            localStorage.removeItem('roomCode');
+            localStorage.removeItem('playerId');
+            localStorage.removeItem('nickname');
+            
+            joinForm.style.display = 'block';
+            gameArea.style.display = 'none';
+            
+            alert('Connection lost. Please rejoin the game.');
+        });
+
+        // Enhanced join success handler
+        socket.on('join-success', (data) => {
+            console.log('Join successful:', data);
+            
+            connectionState.currentRoomCode = data.roomCode;
+            connectionState.currentPlayerId = data.playerId;
+            connectionState.currentNickname = data.nickname;
+
+            // Save to localStorage for reconnection (including roomCode)
+            localStorage.setItem('roomCode', data.roomCode);
+            localStorage.setItem('playerId', data.playerId);
+            localStorage.setItem('nickname', data.nickname);
+
+            // Update UI
+            currentRoomCodeDisplay.textContent = data.roomCode;
+            updateConnectionStatus('connected');
+            
+            joinForm.style.display = 'none';
+            gameArea.style.display = 'block';
+        });
+
+        // Enhanced reconnection success handler
+        socket.on('reconnect-success', (data) => {
+            console.log('Reconnection successful:', data);
+            
+            connectionState.isReconnecting = false;
+            connectionState.reconnectAttempts = 0;
+            connectionState.gameState = data.gameState;
+            
+            // Update UI
+            currentRoomCodeDisplay.textContent = data.roomCode;
+            gameStatusDisplay.textContent = `Reconnected as ${data.nickname}`;
+            updatePlayerScore(data.score);
+            updateConnectionStatus('connected');
+            
+            joinForm.style.display = 'none';
+            gameArea.style.display = 'block';
+
+            // Handle timer restoration if present
+            if (data.timerRemaining && data.timerPhase) {
+                setTimeout(() => {
+                    updatePlayerTimer(data.timerRemaining, data.timerPhase);
+                }, 100);
+            }
+
+            // Update game phase UI based on current state
+            updateGamePhase(data.gameState, data);
+        });
+
+        socket.on('reconnect-error', (data) => {
+            console.error('Reconnection failed:', data.message);
+            connectionState.isReconnecting = false;
+            
+            // Clear invalid data
+            localStorage.removeItem('roomCode');
+            localStorage.removeItem('playerId');
+            localStorage.removeItem('nickname');
+            
+            updateConnectionStatus('disconnected', 'Reconnection failed');
+            joinForm.style.display = 'block';
+            gameArea.style.display = 'none';
+        });
+
+        socket.on('category-submitted', (data) => {
+            categoryInput.value = '';
+            categorySuccess.classList.remove('hidden');
+            categorySuccess.textContent = `"${data.category}" submitted! Thanks for contributing.`;
+            
+            setTimeout(() => {
+                categorySuccess.classList.add('hidden');
+            }, 3000);
+        });
+
+        socket.on('timer-update', (data) => {
+            updatePlayerTimer(data.remaining, data.phase);
+        });
+
+        socket.on('join-error', (data) => {
+            showError(joinError, data.message);
+            joinBtn.disabled = false;
+            joinBtn.textContent = 'Join Game';
+        });
+
+        socket.on('room-update', (data) => {
+            if (data.players && connectionState.currentNickname) {
+                const myPlayer = data.players.find(p => p.nickname === connectionState.currentNickname);
+                if (myPlayer) {
+                    updatePlayerScore(myPlayer.score);
+                }
+            }
+        });
+
+        socket.on('game-state-update', (data) => {
+            console.log('Game state update:', data);
+            connectionState.gameState = data.gameState;
+            updateGamePhase(data.gameState, data);
+            
+            // Update player score if available
+            if (data.players) {
+                const myPlayer = data.players.find(p => p.nickname === connectionState.currentNickname);
+                if (myPlayer) {
+                    updatePlayerScore(myPlayer.score);
+                }
+            }
+        });
+
+        socket.on('submission-confirmed', (data) => {
+            console.log('Submission confirmed:', data.exemplar);
+            showEarlyCompletion('submission');
+        });
+
+        socket.on('gm-disconnected', () => {
+            alert('Game Master disconnected. The game has ended.');
+            location.reload();
+        });
+        
         submitCategoryBtn.addEventListener('click', () => {
             const category = categoryInput.value.trim();
             if (!category) {
@@ -656,63 +926,6 @@
             showEarlyCompletion('voting');
         });
 
-        // Socket events
-        socket.on('join-success', (data) => {
-            currentRoomCode = data.roomCode;
-            currentRoomCodeDisplay.textContent = currentRoomCode;
-            
-            joinForm.style.display = 'none';
-            gameArea.style.display = 'block';
-        });
-
-
-        socket.on('category-submitted', (data) => {
-            categoryInput.value = '';
-            categorySuccess.classList.remove('hidden');
-            categorySuccess.textContent = `"${data.category}" submitted! Thanks for contributing.`;
-            
-            // Hide success message after 3 seconds
-            setTimeout(() => {
-                categorySuccess.classList.add('hidden');
-            }, 3000);
-        });
-
-        socket.on('timer-update', (data) => {
-            updatePlayerTimer(data.remaining, data.phase);
-        });
-
-        socket.on('join-error', (data) => {
-            showError(joinError, data.message);
-            joinBtn.disabled = false;
-            joinBtn.textContent = 'Join Game';
-        });
-
-        socket.on('room-update', (data) => {
-            // Update player's score when room data changes
-            if (data.players && currentNickname) {
-                const myPlayer = data.players.find(p => p.nickname === currentNickname);
-                if (myPlayer) {
-                    updatePlayerScore(myPlayer.score);
-                }
-            }
-        });
-
-
-        socket.on('game-state-update', (data) => {
-            updateGamePhase(data.gameState, data);
-        });
-
-        socket.on('submission-confirmed', (data) => {
-            console.log('Submission confirmed:', data.exemplar);
-            // Show early completion state
-            showEarlyCompletion('submission');
-        });
-
-        socket.on('gm-disconnected', () => {
-            alert('Game Master disconnected. The game has ended.');
-            location.reload();
-        });
-
         // Helper functions
         function showError(element, message) {
             element.textContent = message;
@@ -729,7 +942,6 @@
             
             playerScore.textContent = `${newScore} pts`;
             
-            // Add animation if score increased
             if (newScore > oldScore) {
                 playerScore.classList.add('updated');
                 setTimeout(() => {
@@ -748,15 +960,12 @@
                 return;
             }
             
-            // Show timer
             playerTimer.classList.remove('hidden');
             
-            // Update countdown display
             const minutes = Math.floor(remaining / 60);
             const seconds = remaining % 60;
             playerTimerCountdown.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
             
-            // Update label based on phase
             const phaseLabels = {
                 'submission': 'Submit Your Exemplar',
                 'voting': 'Vote on All Exemplars',
@@ -765,23 +974,18 @@
             
             playerTimerLabel.textContent = phaseLabels[phase] || 'Time Remaining';
             
-            // Initialize total time on first update of phase
             if (playerTimerState.total === 0) {
                 playerTimerState.total = remaining;
                 playerTimerState.hasCompleted = false;
-                // Reset early completion styling
                 playerTimer.classList.remove('timer-completed');
                 earlyCompletionMsg.classList.add('hidden');
             }
             
-            // Update progress bar
             const progress = ((playerTimerState.total - remaining) / playerTimerState.total) * 100;
             playerTimerBar.style.width = `${progress}%`;
             
-            // Apply warning styles
             const percentRemaining = (remaining / playerTimerState.total) * 100;
             
-            // Remove existing classes
             playerTimerCountdown.classList.remove('warning', 'critical');
             playerTimerBar.classList.remove('warning', 'critical');
             
@@ -794,7 +998,6 @@
             }
         }
 
-        // Function to show early completion state
         function showEarlyCompletion(phase) {
             if (playerTimerState.hasCompleted) return;
             
@@ -825,12 +1028,10 @@
         }
 
         function updateGamePhase(gameState, data) {
-            // Reset timer when phase changes
             if (gameState !== playerTimerState.phase) {
                 resetPlayerTimer();
             }
             
-            // Initialize timer for new phases
             if (data.timerRemaining && data.timerRemaining > 0) {
                 const phase = gameState === 'submitting' ? 'submission' : 
                             gameState === 'voting' ? 'voting' : '';
@@ -840,36 +1041,33 @@
                 }
             }
 
-            // Update player's own score if available
             if (data.players) {
-                const myPlayer = data.players.find(p => p.nickname === currentNickname);
+                const myPlayer = data.players.find(p => p.nickname === connectionState.currentNickname);
                 if (myPlayer) {
                     updatePlayerScore(myPlayer.score);
                 }
             }
             
-            // Hide all game phases
             [submissionPhase, votingPhase, waitingPhase, lobbyPhase].forEach(phase => {
                 phase.classList.add('hidden');
             });
 
             switch(gameState) {
-
                 case 'lobby':
-                gameStatusDisplay.textContent = 'Submit category ideas';
-                lobbyPhase.classList.remove('hidden');
-                if (data.players) {
-                    lobbyPlayerCount.textContent = data.players.length;
-                }
-                categoryInput.focus();
-                resetPlayerTimer();
-                break;
+                    gameStatusDisplay.textContent = 'Submit category ideas';
+                    lobbyPhase.classList.remove('hidden');
+                    if (data.players) {
+                        lobbyPlayerCount.textContent = data.players.length;
+                    }
+                    categoryInput.focus();
+                    resetPlayerTimer();
+                    break;
+                    
                 case 'submitting':
                     gameStatusDisplay.textContent = 'Submit an exemplar';
                     categoryDisplay.textContent = `"${data.currentCategory}"`;
                     submissionPhase.classList.remove('hidden');
                     
-                    // Only reset if this is a new round
                     if (data.round !== currentRound) {
                         currentRound = data.round;
                         hasSubmittedThisRound = false;
@@ -896,7 +1094,7 @@
                     gameStatusDisplay.textContent = 'Check the display for results!';
                     waitingPhase.classList.remove('hidden');
                     waitingMessage.textContent = 'Results are being shown on the main display';
-                    resetPlayerTimer(); // Hide timer during results
+                    resetPlayerTimer();
                     break;
                     
                 default:
