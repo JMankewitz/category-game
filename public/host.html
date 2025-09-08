@@ -940,6 +940,10 @@
             updateCategoryBubbles(data.categorySubmissions);
         });
 
+        socket.on('player-reconnected', (data) => {
+            addPlayerBubble(data.nickname, false);
+        });
+
         // Handle host category addition confirmation
         socket.on('category-added', (data) => {
             hostCategoryInput.value = '';

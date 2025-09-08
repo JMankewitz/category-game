@@ -4,6 +4,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
@@ -346,6 +347,7 @@ async function startResultsPhase(room) {
             submitter.score += points;
             await updatePlayerFinalScore(submitter.socketId, room.dbGameId, submitter.score);
             await updateSubmissionResults(points, yesCount, noCount, room.currentRoundDbId, submitter.dbPlayerId);
+            await updatePlayerFinalScoreByPlayerId(submitter.playerId, room.dbGameId, submitter.score);
         }
         
         results.push({
@@ -536,17 +538,19 @@ function initializeDatabase() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
-    CREATE TABLE IF NOT EXISTS players (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        socket_id TEXT NOT NULL,
-        nickname TEXT NOT NULL,
-        game_id INTEGER NOT NULL,
-        final_score INTEGER DEFAULT 0,
-        joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        left_at DATETIME,
-        FOREIGN KEY (game_id) REFERENCES games(id),
-        UNIQUE(socket_id, game_id)
-    );
+        CREATE TABLE IF NOT EXISTS players (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            socket_id TEXT NOT NULL,
+            player_id TEXT UNIQUE NOT NULL,
+            nickname TEXT NOT NULL,
+            game_id INTEGER NOT NULL,
+            final_score INTEGER DEFAULT 0,
+            is_connected INTEGER DEFAULT 1,
+            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            left_at DATETIME,
+            FOREIGN KEY (game_id) REFERENCES games(id),
+            UNIQUE(socket_id, game_id)
+        );
 
     CREATE TABLE IF NOT EXISTS rounds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -642,20 +646,18 @@ function logGameCreated(roomCode, gmSocketId) {
 }
 
 
-function logPlayerJoined(socketId, nickname, gameId) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare(`INSERT INTO players (socket_id, nickname, game_id, joined_at) VALUES (?, ?, ?, ?)`);
-        stmt.run(socketId, nickname, gameId, new Date().toISOString(), function(err) {
-            if (err) {
-                console.error('DB Error adding player:', err);
-                reject(err);
-            } else {
-                console.log(`DB: Player ${nickname} (ID ${this.lastID}) joined game ${gameId}`);
-                resolve(this.lastID);
-            }
-        });
-        stmt.finalize();
+function logPlayerJoined(playerId, socketId, nickname, gameId) {
+  return new Promise((resolve, reject) => {
+    const stmt = db.prepare(`
+      INSERT INTO players (player_id, socket_id, nickname, game_id, is_connected, joined_at)
+      VALUES (?, ?, ?, ?, 1, ?)
+    `);
+    stmt.run(playerId, socketId, nickname, gameId, new Date().toISOString(), function(err) {
+      if (err) return reject(err);
+      resolve(this.lastID);
     });
+    stmt.finalize();
+  });
 }
 
 function logRoundStarted(gameId, roundNumber, category) {
@@ -725,20 +727,26 @@ function updateGameStatus(roomCode, status, totalRounds = null) {
     });
 }
 
-function updatePlayerFinalScore(socketId, gameId, score) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare(`UPDATE players SET final_score = ? WHERE socket_id = ? AND game_id = ?`);
-        stmt.run(score, socketId, gameId, function(err) {
-            if (err) {
-                console.error('DB Error updating player score:', err);
-                reject(err);
-            } else {
-                console.log(`DB: Player ${socketId} final score updated to ${score}`);
-                resolve();
-            }
-        });
-        stmt.finalize();
+function updatePlayerFinalScoreByPlayerId(playerId, gameId, score) {
+  return new Promise((resolve, reject) => {
+    const stmt = db.prepare(`UPDATE players SET final_score = ? WHERE player_id = ? AND game_id = ?`);
+    stmt.run(score, playerId, gameId, function(err) {
+      if (err) return reject(err);
+      resolve();
     });
+    stmt.finalize();
+  });
+}
+
+function setPlayerConnected(playerId, isConnected) {
+  return new Promise((resolve, reject) => {
+    const stmt = db.prepare(`UPDATE players SET is_connected = ? WHERE player_id = ?`);
+    stmt.run(isConnected ? 1 : 0, playerId, function(err) {
+      if (err) return reject(err);
+      resolve();
+    });
+    stmt.finalize();
+  });
 }
 
 function logPlayerLeft(socketId, gameId) {
@@ -868,7 +876,7 @@ io.on('connection', (socket) => {
         console.log(`Room ${roomCode} created by host ${socket.id}`);
     });
     
-    // Player joins room
+        // Player joins room
     socket.on('join-room', async (data) => {
         const { roomCode, nickname } = data;
         const room = rooms.get(roomCode);
@@ -883,29 +891,36 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Check if nickname is already taken
+        // Check if nickname already taken
         const existingNicknames = Array.from(room.players.values()).map(p => p.nickname.toLowerCase());
         if (existingNicknames.includes(nickname.toLowerCase())) {
             socket.emit('join-error', { message: 'Nickname already taken' });
             return;
         }
 
-        // Add player to room
-        const playerId = socket.id;
-        const dbPlayerId = await logPlayerJoined(socket.id, nickname.trim(), room.dbGameId);
+        // Create persistent playerId
+        const playerId = uuidv4();
+
+        // Log in DB (include playerId if you update schema)
+        const dbPlayerId = await logPlayerJoined(playerId, socket.id, nickname.trim(), room.dbGameId);
+
+        // Add to in-memory map
         room.players.set(playerId, {
+            playerId,
+            dbPlayerId,
+            socketId: socket.id,
             nickname: nickname.trim(),
             score: 0,
-            socketId: socket.id,
             hasSubmitted: false,
             hasVoted: false,
-            dbPlayerId: dbPlayerId
+            isConnected: true
         });
 
         socket.join(roomCode);
-        socket.emit('join-success', { roomCode, playerId });
 
-        // Notify everyone in the room about the new player
+        socket.emit('join-success', { roomCode, playerId, nickname });
+
+        // Build player list for broadcast
         const playerList = Array.from(room.players.values()).map(p => ({
             nickname: p.nickname,
             score: p.score,
@@ -913,35 +928,28 @@ io.on('connection', (socket) => {
             hasVoted: p.hasVoted
         }));
 
-        // Send current game state to the newly joined player
+        // Send current game state to this player
         const gameStateData = {
             gameState: room.gameState,
             round: room.round,
             players: playerList
         };
-
         if (room.gameState === 'lobby') {
             gameStateData.categorySubmissions = room.categorySubmissions || [];
         }
-
         socket.emit('game-state-update', gameStateData);
 
+        // Broadcast update to everyone
         io.to(roomCode).emit('room-update', {
             playerCount: room.players.size,
             players: playerList,
             gameState: room.gameState
         });
 
-        // Send player join update to display
+        // Notify display
         if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('player-joined', { 
-                nickname: nickname.trim() 
-            });
-            
-            // Also send updated player list to display
-            io.to(room.displaySocketId).emit('players-update', { 
-                players: playerList 
-            });
+            io.to(room.displaySocketId).emit('player-joined', { nickname: nickname.trim() });
+            io.to(room.displaySocketId).emit('players-update', { players: playerList });
         }
 
         console.log(`Player ${nickname} joined room ${roomCode} (lobby phase)`);
@@ -1079,6 +1087,35 @@ io.on('connection', (socket) => {
             socket.emit('error', { message: 'Unable to start game - no categories available' });
         }
     });
+
+    socket.on('reconnect-player', async ({ roomCode, playerId }) => {
+        const room = rooms.get(roomCode);
+        if (!room) return socket.emit('reconnect-error', { message: 'Room not found' });
+
+        const player = room.players.get(playerId);
+        if (!player) return socket.emit('reconnect-error', { message: 'Player not found' });
+
+        // re-bind socket, mark connected
+        player.socketId = socket.id;
+        player.isConnected = true;
+        socket.join(roomCode);
+
+        try {
+            await new Promise((resolve, reject) => {
+            const stmt = db.prepare(`UPDATE players SET socket_id = ?, is_connected = 1 WHERE player_id = ?`);
+            stmt.run(socket.id, playerId, err => err ? reject(err) : resolve());
+            stmt.finalize();
+            });
+        } catch (e) {
+            console.error('DB reconnect update error', e);
+        }
+
+        socket.emit('reconnect-success', { roomCode, playerId, nickname: player.nickname, score: player.score });
+        io.to(roomCode).emit('player-reconnected', { nickname: player.nickname });
+
+    // (Optional) send them a fresh game-state snapshot here if you like
+    });
+
 
     // Display connects to room
     socket.on('join-display', (data) => {
@@ -1331,58 +1368,69 @@ io.on('connection', (socket) => {
         console.log(`Game ended in room ${room.code}`);
     });
 
-// Handle disconnections
+    // Handle disconnections
     socket.on('disconnect', async () => {
         console.log('Client disconnected:', socket.id);
-        
-        // Find and clean up from any rooms
+
         for (const [roomCode, room] of rooms.entries()) {
             if (room.gmSocketId === socket.id) {
                 // GM disconnected - notify players and clean up room
                 io.to(roomCode).emit('gm-disconnected');
                 rooms.delete(roomCode);
                 console.log(`Room ${roomCode} deleted - GM disconnected`);
+
             } else if (room.displaySocketId === socket.id) {
                 // Display disconnected
                 room.displaySocketId = null;
                 console.log(`Display disconnected from room ${roomCode}`);
-            } else if (room.players.has(socket.id)) {
-                // Player disconnected
-                const player = room.players.get(socket.id);
 
-                await logPlayerLeft(socket.id, room.dbGameId);
+            } else {
+                // Look up player by socketId
+                const playerEntry = Array.from(room.players.values())
+                    .find(p => p.socketId === socket.id);
 
-                room.players.delete(socket.id);
-                
-                const playerList = Array.from(room.players.values()).map(p => ({
-                    nickname: p.nickname,
-                    score: p.score,
-                    hasSubmitted: p.hasSubmitted,
-                    hasVoted: p.hasVoted
-                }));
+                if (playerEntry) {
+                    const { playerId, nickname } = playerEntry;
 
-                io.to(roomCode).emit('room-update', {
-                    playerCount: room.players.size,
-                    players: playerList,
-                    gameState: room.gameState
-                });
-
-                // Send player leave update to display
-                if (room.displaySocketId && player) {
-                    io.to(room.displaySocketId).emit('player-left', { 
-                        nickname: player.nickname 
-                    });
+                    // Mark disconnected instead of deleting
                     
-                    // Also send updated player list to display
-                    io.to(room.displaySocketId).emit('players-update', { 
-                        players: playerList 
-                    });
-                }
+                    await setPlayerConnected(playerId, false);
+                    // Update DB
+                    
+                    // Broadcast updated player list
+                    const playerList = Array.from(room.players.values()).map(p => ({
+                        nickname: p.nickname,
+                        score: p.score,
+                        hasSubmitted: p.hasSubmitted,
+                        hasVoted: p.hasVoted,
+                        isConnected: p.isConnected
+                    }));
 
-                console.log(`Player ${player?.nickname} left room ${roomCode}`);
+                    io.to(roomCode).emit('room-update', {
+                        playerCount: room.players.size,
+                        players: playerList,
+                        gameState: room.gameState
+                    });
+
+                    if (room.displaySocketId) {
+                        io.to(room.displaySocketId).emit('player-disconnected', { nickname });
+                        io.to(room.displaySocketId).emit('players-update', { players: playerList });
+                    }
+
+                    console.log(`Player ${nickname} marked disconnected in room ${roomCode}`);
+
+                    // Optionally: start grace timer (e.g., 60s) before deleting
+                    setTimeout(() => {
+                        const stillGone = room.players.get(playerId);
+                        if (stillGone && !stillGone.isConnected) {
+                            room.players.delete(playerId);
+                            console.log(`Player ${nickname} removed from room ${roomCode} after grace period`);
+                        }
+                    }, 60000);
+                }
             }
-            
-            // Cancel any active timers for this room (happens regardless of who disconnected)
+
+            // Cancel active timers (if that's still your desired behavior)
             if (room.currentTimer) {
                 room.currentTimer.cancel();
             }

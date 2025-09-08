@@ -547,6 +547,14 @@
             hasCompleted: false
         };
 
+        window.addEventListener('load', () => {
+        const savedRoomCode = localStorage.getItem('roomCode');
+        const savedPlayerId = localStorage.getItem('playerId');
+        if (savedRoomCode && savedPlayerId) {
+            socket.emit('reconnect-player', { roomCode: savedRoomCode, playerId: savedPlayerId });
+        }
+        });
+
         submitCategoryBtn.addEventListener('click', () => {
             const category = categoryInput.value.trim();
             if (!category) {
@@ -659,12 +667,28 @@
         // Socket events
         socket.on('join-success', (data) => {
             currentRoomCode = data.roomCode;
+            currentNickname = data.nickname;
+
+            localStorage.setItem('playerId', data.playerId);
+
             currentRoomCodeDisplay.textContent = currentRoomCode;
             
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
         });
 
+        socket.on('reconnect-success', (data) => {
+            currentRoomCode = data.roomCode;
+            currentNickname = data.nickname;
+            localStorage.setItem('playerId', data.playerId);
+
+            joinForm.style.display = 'none';
+            gameArea.style.display = 'block';
+
+            // restore score
+            updatePlayerScore(data.score);
+            gameStatusDisplay.textContent = `Reconnected as ${data.nickname}`;
+            });
 
         socket.on('category-submitted', (data) => {
             categoryInput.value = '';
