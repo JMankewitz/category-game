@@ -115,22 +115,23 @@ function createRoom(code) {
     return {
         code: code,
         dbGameId: null,
-        players: new Map(), // playerId -> player object
+        players: new Map(),
         gmSocketId: null,
         displaySocketId: null,
         gameState: 'lobby',
         currentCategory: '',
         submissions: [],
         round: 0,
+        maxRounds: 10, 
         createdAt: new Date(),
         
         // Category management
-        categorySubmissions: [], // Array of {playerId, nickname, category}
-        availableCategories: [], // Cached list of available categories
+        categorySubmissions: [],
+        availableCategories: [],
         
         // Timer properties
         currentTimer: null,
-        timerState: null, // Saved timer state for reconnections
+        timerState: null,
         phaseStartTime: null,
         timerSettings: {
             submission: 120,
@@ -214,6 +215,7 @@ function broadcastGameState(room, excludeSocketId = null) {
         gameState: room.gameState,
         currentCategory: room.currentCategory,
         round: room.round,
+        maxRounds: room.maxRounds,
         players: Array.from(room.players.values()).map(p => ({
             nickname: p.nickname,
             score: p.score,
@@ -286,6 +288,7 @@ function updateDisplay(room) {
     const displayData = {
         gameState: room.gameState,
         round: room.round,
+        maxRounds: room.maxRounds,
         totalPlayers: connectedPlayersCount, // Changed from room.players.size
         categorySubmissions: room.categorySubmissions || []
     };
@@ -868,6 +871,11 @@ function autoShowScoreboard(room) {
 async function prepareNextRound(room) {
     room.round++;
     
+    if (room.round > room.maxRounds) {
+        await endGame(room);
+        return;
+    }
+
     // Try to auto-select next category
     const nextCategory = await selectNextCategory(room);
     
@@ -891,6 +899,7 @@ async function prepareNextRound(room) {
         const gameStateData = {
             gameState: room.gameState,
             round: room.round,
+            maxRounds: room.maxRounds,
             needsMoreCategories: true,
             players: Array.from(room.players.values()).map(p => ({
                 nickname: p.nickname,
@@ -907,6 +916,7 @@ async function prepareNextRound(room) {
             io.to(room.displaySocketId).emit('display-update', {
                 gameState: room.gameState,
                 round: room.round,
+                maxRounds: room.maxRounds,
                 totalPlayers: room.players.size,
                 needsMoreCategories: true
             });
@@ -914,6 +924,83 @@ async function prepareNextRound(room) {
 
         console.log(`Round ${room.round} waiting - no categories available in room ${room.code}`);
     }
+}
+
+async function endGame(room) {
+    room.gameState = 'game-complete';
+    
+    if (room.currentTimer) {
+        room.currentTimer.cancel();
+    }
+    
+    await updateGameStatus(room.code, 'completed', room.maxRounds);
+    
+    const finalScores = Array.from(room.players.values()).map(p => ({
+        nickname: p.nickname,
+        score: p.score
+    })).sort((a, b) => b.score - a.score);
+
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('show-round-scoreboard', {
+            players: finalScores,
+            round: room.maxRounds,
+            maxRounds: room.maxRounds,
+            isGameWide: true,
+            isFinal: true,
+            isComplete: true
+        });
+    }
+
+    const gameCompleteData = {
+        gameState: 'game-complete',
+        finalScores: finalScores,
+        round: room.maxRounds,
+        maxRounds: room.maxRounds
+    };
+
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId) {
+            io.to(player.socketId).emit('game-complete', gameCompleteData);
+        }
+    });
+
+    console.log(`Game completed in room ${room.code} after ${room.maxRounds} rounds`);
+}
+
+async function restartGame(room) {
+    room.gameState = 'lobby';
+    room.round = 0;
+    room.currentCategory = '';
+    room.submissions = [];
+    room.categorySubmissions = [];
+    room.currentResults = null;
+    room.currentResultIndex = -1;
+    room.currentRoundDbId = null;
+    
+    if (room.currentTimer) {
+        room.currentTimer.cancel();
+        room.currentTimer = null;
+        room.timerState = null;
+    }
+    
+    room.players.forEach(player => {
+        player.score = 0;
+        player.hasSubmitted = false;
+        player.hasVoted = false;
+    });
+    
+    room.dbGameId = await logGameCreated(room.code, room.gmSocketId);
+    await initializePresetCategories(room.dbGameId);
+    
+    try {
+        broadcastGameState(room);
+    } catch (error) {
+        console.error('Error broadcasting game state during restart:', error);
+    }
+    
+    updateDisplay(room);
+    
+    console.log(`Game restarted in room ${room.code}`);
 }
 
 // Create tables if they don't exist
@@ -1467,6 +1554,43 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('set-max-rounds', (data) => {
+        const { maxRounds } = data;
+        const room = findRoomBySocketId(socket.id);
+        
+        if (!room || room.displaySocketId !== socket.id) {
+            socket.emit('error', { message: 'Not authorized - display only' });
+            return;
+        }
+        
+        if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 50) {
+            socket.emit('error', { message: 'Round limit must be between 1 and 50' });
+            return;
+        }
+        
+        room.maxRounds = maxRounds;
+        
+        socket.emit('max-rounds-updated', { maxRounds });
+        updateDisplay(room);
+        
+        console.log(`Max rounds set to ${maxRounds} in room ${room.code}`);
+    });
+
+    socket.on('restart-game', async () => {
+        const room = findRoomBySocketId(socket.id);
+        
+        if (!room || room.displaySocketId !== socket.id) {
+            socket.emit('error', { message: 'Not authorized - display only' });
+            return;
+        }
+        
+        if (room.gameState !== 'game-complete') {
+            socket.emit('error', { message: 'Can only restart completed games' });
+            return;
+        }
+        
+        await restartGame(room);
+    });
 
     // Display connects to room
     socket.on('join-display', (data) => {

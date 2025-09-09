@@ -94,6 +94,64 @@
             display: flex;
         }
 
+        .round-counter {
+            position: absolute;
+            top: 2rem;
+            left: 2rem;
+            background: rgba(255,255,255,0.2);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .game-complete-actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .restart-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .restart-button:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .control-label {
+            color: #555;
+            font-weight: 600;
+            min-width: 120px;
+            font-size: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .round-counter {
+                position: relative;
+                top: auto;
+                left: auto;
+                margin: 1rem auto;
+                display: inline-block;
+            }
+            
+            .control-label {
+                min-width: auto;
+                margin-bottom: 0.5rem;
+            }
+        }
+
         .vote-side {
             flex: 1;
             display: flex;
@@ -704,6 +762,7 @@
 </head>
 <body>
     <div class="room-code" id="roomCode">XXXX</div>
+    <div class="round-counter" id="roundCounter">Round 0 / 10</div>
     <div class="timer-display hidden" id="timerDisplay">
         <div class="timer-label" id="timerLabel">Time Remaining</div>
         <div class="timer-countdown" id="timerCountdown">0:00</div>
@@ -752,14 +811,15 @@
             <div class="host-controls">
                 <div class="host-section">
                     <h3>Host Controls</h3>
+                    <div class="control-group">
+                        <span class="control-label">Round Limit:</span>
+                        <input type="number" id="maxRoundsInput" class="host-input" 
+                            value="10" min="1" max="50" style="max-width: 100px;">
+                        <button id="updateRoundsBtn" class="host-button">Update</button>
+                    </div>
                     <button id="startGameBtn" class="start-game-button" disabled>
                         Start Game (Need 2+ players and 3+ categories)
                     </button>
-                    <div class="control-group">
-                        <input type="text" id="hostCategoryInput" class="host-input" 
-                            placeholder="Add a category..." maxlength="50">
-                        <button id="addCategoryBtn" class="host-button">Add Category</button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -829,6 +889,11 @@
                 <div id="scoreboardList">
                     <!-- Scores will be populated here -->
                 </div>
+                
+                <!-- NEW: Game complete actions -->
+                <div id="gameCompleteActions" class="game-complete-actions hidden">
+                    <button id="restartGameBtn" class="restart-button">🔄 Play Again?</button>
+                </div>
             </div>
         </div>
 
@@ -893,7 +958,13 @@
         const hostCategoryInput = document.getElementById('hostCategoryInput');
         const addCategoryBtn = document.getElementById('addCategoryBtn');
         const startGameBtn = document.getElementById('startGameBtn');
+        const roundCounter = document.getElementById('roundCounter');
+        const maxRoundsInput = document.getElementById('maxRoundsInput');
+        const updateRoundsBtn = document.getElementById('updateRoundsBtn');
+        const restartGameBtn = document.getElementById('restartGameBtn');
+        const gameCompleteActions = document.getElementById('gameCompleteActions');
 
+        let currentMaxRounds = 10; // NEW: Track max rounds
 
         let currentTimer = {
             remaining: 0,
@@ -911,6 +982,28 @@
             }
             
             socket.emit('host-add-category', { category });
+        });
+
+        updateRoundsBtn.addEventListener('click', () => {
+            const maxRounds = parseInt(maxRoundsInput.value);
+            if (isNaN(maxRounds) || maxRounds < 1 || maxRounds > 50) {
+                alert('Round limit must be between 1 and 50');
+                maxRoundsInput.value = currentMaxRounds;
+                return;
+            }
+            
+            socket.emit('set-max-rounds', { maxRounds });
+        });
+
+        // NEW: Restart game button handler
+        restartGameBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to restart the game? This will reset all scores and return to the lobby.')) {
+                socket.emit('restart-game');
+            }
+        });
+
+        maxRoundsInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') updateRoundsBtn.click();
         });
 
         // Start game from lobby
@@ -973,6 +1066,12 @@
 
         socket.on('display-update', (data) => {
             updateDisplay(data);
+        });
+
+        socket.on('max-rounds-updated', (data) => {
+            currentMaxRounds = data.maxRounds;
+            maxRoundsInput.value = data.maxRounds;
+            updateRoundCounter(0, data.maxRounds); // Update display
         });
 
         // Timer update handler
@@ -1094,6 +1193,10 @@
         function updateDisplay(data) {
             console.log('Display update received:', data);
             
+            if (data.round !== undefined && data.maxRounds !== undefined) {
+                updateRoundCounter(data.round, data.maxRounds);
+            }
+
             switch(data.gameState) {
                 case 'lobby':
                     showScreen('lobby');
@@ -1166,6 +1269,8 @@
             controversySummary, roundScoreboard, lobbyScreen].forEach(s => {
                 s.classList.add('hidden');
             });
+
+            gameCompleteActions.classList.add('hidden');
 
             switch(screen) {
                 case 'lobby':
@@ -1240,6 +1345,11 @@
             
             // Create and animate player circles
             createAndAnimatePlayerCircles(data.votes);
+        }
+
+        function updateRoundCounter(currentRound, maxRounds) {
+            currentMaxRounds = maxRounds || currentMaxRounds;
+            roundCounter.textContent = `Round ${currentRound} / ${currentMaxRounds}`;
         }
 
         // Helper function to update category bubbles
@@ -1467,6 +1577,10 @@
             }).join('');
             
             scoreboardList.innerHTML = scoresHtml;
+
+            if (data.isComplete) {
+                gameCompleteActions.classList.remove('hidden');
+            }
         }
 
         function addPlayerBubble(nickname, isNew = false, container = playerBubbles) {

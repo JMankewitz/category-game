@@ -274,6 +274,40 @@
             font-style: italic;
         }
 
+        .round-display {
+            background: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 15px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #ffd700;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .game-complete-message {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid rgba(76, 175, 80, 0.5);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin: 1rem 0;
+            text-align: center;
+        }
+
+        .final-results {
+            margin-top: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .final-result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem;
+            background: rgba(255,255,255,0.1);
+            margin: 0.2rem 0;
+            border-radius: 8px;
+        }
 
         .player-score-status {
             display: flex;
@@ -462,6 +496,7 @@
             <div class="status">
                 <div class="room-info">Room</div>
                 <div class="room-code" id="currentRoomCode"></div>
+                <div class="round-display" id="roundDisplay">Round 0 / 10</div>
                 <div class="player-score-status">
                     <span id="gameStatus">Waiting for game to start...</span>
                     <span class="score-display" id="playerScore">0 pts</span>
@@ -498,6 +533,18 @@
 
             <div id="waitingPhase" class="game-content">
                 <div class="waiting-message" id="waitingMessage">Waiting for game to start...</div>
+            </div>
+
+            <!-- Game Complete Phase -->
+            <div id="gameCompletePhase" class="game-content hidden">
+                <div class="game-complete-message">
+                    <h2>🎉 Game Complete! 🎉</h2>
+                    <p>Final results:</p>
+                    <div class="final-results" id="finalResults">
+                        <!-- Final scores will be populated here -->
+                    </div>
+                    <p style="margin-top: 1rem; font-style: italic;">Waiting for host to start a new game...</p>
+                </div>
             </div>
 
             <!-- Lobby Phase -->
@@ -563,6 +610,10 @@
         const gameStatusDisplay = document.getElementById('gameStatus');
         const playerScore = document.getElementById('playerScore');
         
+        const roundDisplay = document.getElementById('roundDisplay');
+        const gameCompletePhase = document.getElementById('gameCompletePhase');
+        const finalResults = document.getElementById('finalResults');
+
         // Game phase elements
         const submissionPhase = document.getElementById('submissionPhase');
         const votingPhase = document.getElementById('votingPhase');
@@ -730,23 +781,26 @@
             connectionState.reconnectAttempts = 0;
             connectionState.gameState = data.gameState;
             
-            // Update UI
             currentRoomCodeDisplay.textContent = data.roomCode;
             gameStatusDisplay.textContent = `Reconnected as ${data.nickname}`;
             updatePlayerScore(data.score);
+            
+            // Update round display
+            if (data.round !== undefined && data.maxRounds !== undefined) {
+                updateRoundDisplay(data.round, data.maxRounds);
+            }
+            
             updateConnectionStatus('connected');
             
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
 
-            // Handle timer restoration if present
             if (data.timerRemaining && data.timerPhase) {
                 setTimeout(() => {
                     updatePlayerTimer(data.timerRemaining, data.timerPhase);
                 }, 100);
             }
 
-            // Update game phase UI based on current state
             updateGamePhase(data.gameState, data);
         });
 
@@ -815,6 +869,22 @@
                     updatePlayerScore(myPlayer.score);
                 }
             }
+        });
+
+        socket.on('game-complete', (data) => {
+            console.log('Game complete:', data);
+            
+            updateRoundDisplay(data.round, data.maxRounds);
+            showFinalResults(data.finalScores);
+            
+            // Show game complete phase
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase].forEach(phase => {
+                phase.classList.add('hidden');
+            });
+            gameCompletePhase.classList.remove('hidden');
+            
+            gameStatusDisplay.textContent = 'Game Complete!';
+            resetPlayerTimer();
         });
 
         socket.on('submission-confirmed', (data) => {
@@ -969,6 +1039,30 @@
             }
         }
 
+        function updateRoundDisplay(round, maxRounds) {
+            if (roundDisplay) {
+                roundDisplay.textContent = `Round ${round} / ${maxRounds}`;
+            }
+        }
+
+        function showFinalResults(finalScores) {
+            if (!finalResults) return;
+            
+            finalResults.innerHTML = finalScores.map((player, index) => {
+                let medal = '';
+                if (index === 0) medal = '🥇 ';
+                else if (index === 1) medal = '🥈 ';
+                else if (index === 2) medal = '🥉 ';
+                
+                return `
+                    <div class="final-result-item">
+                        <span>${medal}${player.nickname}</span>
+                        <span>${player.score} pts</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
         function updatePlayerTimer(remaining, phase) {
             playerTimerState.remaining = remaining;
             playerTimerState.phase = phase;
@@ -1051,6 +1145,11 @@
                 resetPlayerTimer();
             }
             
+            // Update round display
+            if (data.round !== undefined && data.maxRounds !== undefined) {
+                updateRoundDisplay(data.round, data.maxRounds);
+            }
+            
             if (data.timerRemaining && data.timerRemaining > 0) {
                 const phase = gameState === 'submitting' ? 'submission' : 
                             gameState === 'voting' ? 'voting' : '';
@@ -1067,7 +1166,7 @@
                 }
             }
             
-            [submissionPhase, votingPhase, waitingPhase, lobbyPhase].forEach(phase => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase].forEach(phase => {
                 phase.classList.add('hidden');
             });
 
@@ -1107,13 +1206,9 @@
                         votingCategoryPlayer.textContent = `Category: "${data.currentCategory}"`;
                     }
                     
-                    // FIXED: Only create voting interface if it doesn't exist or round changed
                     const existingVotingItems = document.querySelectorAll('.voting-item');
                     if (existingVotingItems.length === 0 || data.round !== currentRound) {
                         createVotingInterface(data.submissions);
-                    } else {
-                        // Just update the status, preserve existing selections
-                        console.log('Preserving existing vote selections');
                     }
                     break;
                     
@@ -1121,6 +1216,15 @@
                     gameStatusDisplay.textContent = 'Check the display for results!';
                     waitingPhase.classList.remove('hidden');
                     waitingMessage.textContent = 'Results are being shown on the main display';
+                    resetPlayerTimer();
+                    break;
+                    
+                case 'game-complete':
+                    gameStatusDisplay.textContent = 'Game Complete!';
+                    gameCompletePhase.classList.remove('hidden');
+                    if (data.finalScores) {
+                        showFinalResults(data.finalScores);
+                    }
                     resetPlayerTimer();
                     break;
                     
