@@ -48,11 +48,12 @@
             text-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
 
-        .lobby-top {
+        .lobby-top-sections {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 2rem;
-            margin-bottom: 2rem;
+            margin: 1rem;
+            margin-bottom: 0;
             max-width: 1200px;
             margin-left: auto;
             margin-right: auto;
@@ -1010,6 +1011,49 @@
             transform: none;
         }
 
+        /* Room code section - standalone left side */
+        .lobby-room-display-standalone {
+            background: rgba(255,255,255,0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 3px solid rgba(255,215,0,0.5);
+        }
+
+        /* Host controls section - standalone right side */
+        .lobby-controls-standalone {
+            background: rgba(255,255,255,0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .controls-header {
+            color: #333;
+            font-size: 1.3rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+
+        /* HIDE the old lobby-header when in lobby mode */
+        #lobbyScreen .lobby-header {
+            display: none;
+        }
+
+        /* Mobile responsiveness for new layout */
+        @media (max-width: 768px) {
+            .lobby-top-sections {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+                margin: 0.5rem;
+            }
+
         .lobby-room-display {
             background: rgba(255,255,255,0.95);
             padding: 2rem;
@@ -1201,53 +1245,45 @@
 
         <!-- Lobby/Category Management Screen -->
         <div id="lobbyScreen" class="hidden">
-            <div class="lobby-top">
+            <div class="lobby-top-sections">
                 <!-- Room Code Display - Left -->
-                <div class="room-display-section">
+                <div class="lobby-room-display-standalone">
                     <div class="room-label">Room Code</div>
-                    <div class="room-code-featured" id="lobbyRoomCode">ABCD</div>
+                    <div class="room-code-featured" id="lobbyRoomCode">XXXX</div>
                     <div class="room-subtitle">Share this code with players</div>
                 </div>
                 
                 <!-- Host Controls - Right -->
-                <div class="host-controls-section">
-                    <div class="controls-title">Game Settings</div>
+                <div class="lobby-controls-standalone">
+                    <div class="controls-header">Game Settings</div>
                     <div class="control-row">
-                        <label class="control-label">Rounds:</label>
+                        <label class="control-label-compact">Rounds:</label>
                         <input type="number" id="maxRoundsInput" class="rounds-input" value="10" min="1" max="50">
                         <button id="updateRoundsBtn" class="compact-button">Update</button>
                     </div>
-                    <button id="startGameBtn" class="start-game-button">
+                    <button id="startGameBtn" class="start-game-button-compact">
                         Start Game (Need 2+ players)
                     </button>
                 </div>
             </div>
-            
-            <!-- Content Area -->
-            <div class="lobby-content">
-                <div class="phase-message">Players are joining and submitting categories...</div>
+
+            <!-- Keep the existing lobby-content-area exactly as is -->
+            <div class="lobby-content-area">
+                <div class="phase-message" id="lobbyMessage">Players are joining and submitting categories...</div>
                 
-                <!-- Players and Categories Side by Side -->
-                <div class="content-sections">
-                    <!-- Players Section -->
-                    <div class="content-section">
-                        <div class="section-title">Players Joined</div>
-                        <div class="player-bubbles" id="playerBubbles">
-                            <div class="player-bubble">Alice</div>
-                            <div class="player-bubble">Bob</div>
-                            <div class="player-bubble">Charlie</div>
-                            <div class="player-bubble">Diana</div>
-                        </div>
+                <!-- Player bubbles container -->
+                <div class="players-waiting" id="lobbyPlayersWaiting">
+                    <div class="waiting-subtitle">Players Joined:</div>
+                    <div class="player-bubbles" id="lobbyPlayerBubbles">
+                        <!-- Player bubbles will appear here -->
                     </div>
-                    
-                    <!-- Categories Section -->
-                    <div class="content-section">
-                        <div class="section-title">Categories Submitted</div>
-                        <div class="category-bubbles" id="categoryBubbles">
-                            <div class="category-bubble">"kitchen items"</div>
-                            <div class="category-bubble">"things that are round"</div>
-                            <div class="category-bubble">"movie genres"</div>
-                        </div>
+                </div>
+                
+                <!-- Category submissions display -->
+                <div class="category-submissions">
+                    <div class="category-subtitle">Categories Submitted:</div>
+                    <div class="category-bubbles" id="categoryBubbles">
+                        <div class="no-categories-message">No categories submitted yet...</div>
                     </div>
                 </div>
             </div>
