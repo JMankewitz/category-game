@@ -1404,8 +1404,14 @@ io.on('connection', (socket) => {
     socket.on('start-lobby-game', async (data) => {
         const room = findRoomBySocketId(socket.id);
         
-        if (!room || (room.gmSocketId !== socket.id && room.displaySocketId !== socket.id)) {
-            socket.emit('error', { message: 'Not authorized' });
+        if (!room) {
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
+        
+        // Allow either GM or display to start the game
+        if (room.gmSocketId !== socket.id && room.displaySocketId !== socket.id) {
+            socket.emit('error', { message: 'Not authorized - must be host or display' });
             return;
         }
         
