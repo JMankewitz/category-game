@@ -1485,10 +1485,6 @@ io.on('connection', (socket) => {
         const { category } = data;
         const room = findRoomBySocketId(socket.id);
         
-        if (!room || room.displaySocketId !== socket.id) {
-            socket.emit('error', { message: 'Not authorized - display only' });
-            return;
-        }
         
         if (!category || category.trim().length === 0) {
             socket.emit('error', { message: 'Category cannot be empty' });
@@ -1522,11 +1518,6 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Allow either GM or display to start the game
-        if (room.gmSocketId !== socket.id && room.displaySocketId !== socket.id) {
-            socket.emit('error', { message: 'Not authorized - must be host or display' });
-            return;
-        }
         
         if (room.players.size < 2) {
             socket.emit('error', { message: 'Need at least 2 players to start' });
@@ -1558,10 +1549,6 @@ io.on('connection', (socket) => {
         const { maxRounds } = data;
         const room = findRoomBySocketId(socket.id);
         
-        if (!room || room.displaySocketId !== socket.id) {
-            socket.emit('error', { message: 'Not authorized - display only' });
-            return;
-        }
         
         if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 50) {
             socket.emit('error', { message: 'Round limit must be between 1 and 50' });
@@ -1579,10 +1566,6 @@ io.on('connection', (socket) => {
     socket.on('restart-game', async () => {
         const room = findRoomBySocketId(socket.id);
         
-        if (!room || room.displaySocketId !== socket.id) {
-            socket.emit('error', { message: 'Not authorized - display only' });
-            return;
-        }
         
         if (room.gameState !== 'game-complete') {
             socket.emit('error', { message: 'Can only restart completed games' });
@@ -1737,10 +1720,6 @@ io.on('connection', (socket) => {
     // GM ends game
     socket.on('end-game', async () => {
         const room = findRoomBySocketId(socket.id);
-        if (!room || room.gmSocketId !== socket.id) {
-            socket.emit('error', { message: 'Not authorized' });
-            return;
-        }
 
         room.gameState = 'ended';
         await updateGameStatus(room.code, 'completed', room.round);
