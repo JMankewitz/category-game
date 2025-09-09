@@ -793,6 +793,16 @@
             }
         });
 
+        socket.on('vote-count-update', (data) => {
+            // Update any vote progress displays without affecting the voting interface
+            if (gameStatusDisplay) {
+                gameStatusDisplay.textContent = `Voting in progress (${data.votedCount}/${data.totalPlayers} voted)`;
+            }
+            
+            // Don't call updateGamePhase or rebuild the voting interface
+            console.log(`Vote count update: ${data.votedCount}/${data.totalPlayers} players voted`);
+        });
+
         socket.on('game-state-update', (data) => {
             console.log('Game state update:', data);
             connectionState.gameState = data.gameState;
@@ -921,8 +931,17 @@
             });
 
             socket.emit('submit-votes', { votes });
+            
+            // Immediately disable the interface for this player
             submitVotesBtn.disabled = true;
             submitVotesBtn.textContent = 'Votes Submitted!';
+            
+            // Disable all vote buttons for this player
+            document.querySelectorAll('.vote-button').forEach(btn => {
+                btn.disabled = true;
+                btn.style.opacity = '0.6';
+            });
+            
             showEarlyCompletion('voting');
         });
 
@@ -1087,7 +1106,15 @@
                     if (data.currentCategory) {
                         votingCategoryPlayer.textContent = `Category: "${data.currentCategory}"`;
                     }
-                    createVotingInterface(data.submissions);
+                    
+                    // FIXED: Only create voting interface if it doesn't exist or round changed
+                    const existingVotingItems = document.querySelectorAll('.voting-item');
+                    if (existingVotingItems.length === 0 || data.round !== currentRound) {
+                        createVotingInterface(data.submissions);
+                    } else {
+                        // Just update the status, preserve existing selections
+                        console.log('Preserving existing vote selections');
+                    }
                     break;
                     
                 case 'results':

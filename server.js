@@ -250,6 +250,31 @@ function broadcastGameState(room, excludeSocketId = null) {
     updateDisplay(room);
 }
 
+function broadcastVoteCountUpdate(room) {
+    const connectedPlayers = Array.from(room.players.values()).filter(p => p.isConnected);
+    const votedCount = connectedPlayers.filter(p => p.hasVoted).length;
+    
+    // Send vote count update to all players (doesn't trigger UI rebuild)
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId) {
+            io.to(player.socketId).emit('vote-count-update', {
+                votedCount,
+                totalPlayers: connectedPlayers.length
+            });
+        }
+    });
+    
+    // Update display with vote progress
+    if (room.displaySocketId) {
+        io.to(room.displaySocketId).emit('display-update', {
+            gameState: room.gameState,
+            currentCategory: room.currentCategory,
+            votedCount,
+            totalPlayers: connectedPlayers.length
+        });
+    }
+}
+
 // Enhanced display update
 function updateDisplay(room) {
     if (!room.displaySocketId) return;
@@ -650,29 +675,30 @@ async function handleSubmitVotes(socket, data) {
 
     const { votes } = data;
 
-    // Record votes and log to database
-    for (const [exemplarIndex, vote] of Object.entries(votes || {})) {
-        const index = parseInt(exemplarIndex, 10);
-        if (Number.isInteger(index) && room.submissions[index]) {
-            // Use playerId instead of socketId for vote tracking
-            room.submissions[index].votes.set(mapping.playerId, !!vote);
-            await logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, !!vote);
-        }
-    }
-
-    player.hasVoted = true;
-
-    // NEW WAY: Single broadcast updates everyone
     try {
-        broadcastGameState(room);
+        // Record votes and log to database
+        for (const [exemplarIndex, vote] of Object.entries(votes || {})) {
+            const index = parseInt(exemplarIndex, 10);
+            if (Number.isInteger(index) && room.submissions[index]) {
+                // Use playerId instead of socketId for vote tracking
+                room.submissions[index].votes.set(mapping.playerId, !!vote);
+                await logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, !!vote);
+            }
+        }
+
+        player.hasVoted = true;
+
+        // FIXED: Only send vote count updates, not full game state
+        broadcastVoteCountUpdate(room);
+        
+        // Check for early completion
+        checkVotingComplete(room);
+        
+        console.log(`Player ${player.nickname} voted in room ${room.code}`);
     } catch (error) {
-        console.error('Error broadcasting game state:', error);
+        console.error('Error submitting votes:', error);
+        socket.emit('error', { message: 'Failed to submit votes' });
     }
-    
-    // Check for early completion
-    checkVotingComplete(room);
-    
-    console.log(`Player ${player.nickname} voted in room ${room.code}`);
 }
 
 // Updated early completion check
