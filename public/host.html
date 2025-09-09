@@ -48,16 +48,246 @@
             text-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
 
-        .lobby-header {
-        display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .lobby-top {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Room code section - left side */
+        .room-display-section {
             background: rgba(255,255,255,0.95);
             padding: 2rem;
             border-radius: 15px;
-            margin: 1rem;
+            text-align: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             border: 3px solid rgba(255,215,0,0.5);
+        }
+
+        .room-label {
+            font-size: 1.2rem;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .room-code-featured {
+            font-size: 3.5rem;
+            font-weight: 900;
+            color: #667eea;
+            letter-spacing: 0.3em;
+            margin: 1rem 0;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-family: 'Courier New', monospace;
+        }
+
+        .room-subtitle {
+            font-size: 1rem;
+            color: #777;
+            font-style: italic;
+        }
+
+        /* Host controls section - right side */
+        .host-controls-section {
+            background: rgba(255,255,255,0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .controls-title {
+            color: #333;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .control-label {
+            color: #555;
+            font-weight: 600;
+            font-size: 1rem;
+            min-width: 80px;
+        }
+
+        .rounds-input {
+            width: 80px;
+            padding: 0.8rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .rounds-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .compact-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .compact-button:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .start-game-button {
+            width: 100%;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .start-game-button:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .start-game-button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Content area below */
+        .lobby-content {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .phase-message {
+            font-size: 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        /* Players and categories sections */
+        .content-sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .content-section {
+            background: rgba(255,255,255,0.1);
+            padding: 2rem;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            opacity: 0.9;
+        }
+
+        .player-bubbles, .category-bubbles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            min-height: 120px;
+            align-items: center;
+        }
+
+        .player-bubble, .category-bubble {
+            background: rgba(255,255,255,0.9);
+            color: #333;
+            padding: 0.8rem 1.2rem;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 500;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .player-bubble {
+            border-left: 4px solid #28a745;
+        }
+
+        .category-bubble {
+            border-left: 4px solid #667eea;
+        }
+
+        .no-items-message {
+            font-size: 1.1rem;
+            opacity: 0.6;
+            font-style: italic;
+            color: rgba(255,255,255,0.8);
+            text-align: center;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .lobby-top {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .content-sections {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .room-code-featured {
+                font-size: 2.5rem;
+                letter-spacing: 0.2em;
+            }
+            
+            .control-row {
+                flex-direction: column;
+                gap: 0.5rem;
+                text-align: center;
+            }
+            
+            .control-label {
+                min-width: auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .lobby-top, .content-sections {
+                margin: 0 -0.5rem;
+            }
+            
+            .room-display-section, .host-controls-section, .content-section {
+                margin: 0 0.5rem;
+            }
         }
 
         .lobby-room-display-featured {
@@ -971,42 +1201,56 @@
 
         <!-- Lobby/Category Management Screen -->
         <div id="lobbyScreen" class="hidden">
-            <div class="lobby-header">
-                <div class="lobby-room-display-featured">
+            <div class="lobby-top">
+                <!-- Room Code Display - Left -->
+                <div class="room-display-section">
                     <div class="room-label">Room Code</div>
-                    <div class="room-code-featured" id="lobbyRoomCode">XXXX</div>
+                    <div class="room-code-featured" id="lobbyRoomCode">ABCD</div>
                     <div class="room-subtitle">Share this code with players</div>
                 </div>
-                <div class="lobby-controls-side">
+                
+                <!-- Host Controls - Right -->
+                <div class="host-controls-section">
+                    <div class="controls-title">Game Settings</div>
                     <div class="control-row">
-                        <label class="control-label-compact">Rounds:</label>
+                        <label class="control-label">Rounds:</label>
                         <input type="number" id="maxRoundsInput" class="rounds-input" value="10" min="1" max="50">
                         <button id="updateRoundsBtn" class="compact-button">Update</button>
                     </div>
-                    <button id="startGameBtn" class="start-game-button-compact" disabled>
+                    <button id="startGameBtn" class="start-game-button">
                         Start Game (Need 2+ players)
                     </button>
                 </div>
             </div>
             
-            <div class="lobby-content-area">
-                <div class="phase-message" id="lobbyMessage">Players are joining and submitting categories...</div>
+            <!-- Content Area -->
+            <div class="lobby-content">
+                <div class="phase-message">Players are joining and submitting categories...</div>
                 
-                <!-- Player bubbles container -->
-                <div class="players-waiting" id="lobbyPlayersWaiting">
-                    <div class="waiting-subtitle">Players Joined:</div>
-                    <div class="player-bubbles" id="lobbyPlayerBubbles">
-                        <!-- Player bubbles will appear here -->
+                <!-- Players and Categories Side by Side -->
+                <div class="content-sections">
+                    <!-- Players Section -->
+                    <div class="content-section">
+                        <div class="section-title">Players Joined</div>
+                        <div class="player-bubbles" id="playerBubbles">
+                            <div class="player-bubble">Alice</div>
+                            <div class="player-bubble">Bob</div>
+                            <div class="player-bubble">Charlie</div>
+                            <div class="player-bubble">Diana</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Categories Section -->
+                    <div class="content-section">
+                        <div class="section-title">Categories Submitted</div>
+                        <div class="category-bubbles" id="categoryBubbles">
+                            <div class="category-bubble">"kitchen items"</div>
+                            <div class="category-bubble">"things that are round"</div>
+                            <div class="category-bubble">"movie genres"</div>
+                        </div>
                     </div>
                 </div>
-                
-                <!-- Category submissions display -->
-                <div class="category-submissions">
-                    <div class="category-subtitle">Categories Submitted:</div>
-                    <div class="category-bubbles" id="categoryBubbles">
-                        <div class="no-categories-message">No categories submitted yet...</div>
-                    </div>
-                </div>
+            </div>
             </div>
         </div>
 
