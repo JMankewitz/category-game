@@ -1564,9 +1564,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('restart-game', async () => {
+        console.log('Restart game requested by socket:', socket.id);
         const room = findRoomBySocketId(socket.id);
+        console.log('Found room:', room ? room.code : 'null');
         
+        if (!room) {
+            console.log('Room not found for socket:', socket.id);
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
         
+        console.log('Room state:', room.gameState);
         if (room.gameState !== 'game-complete') {
             socket.emit('error', { message: 'Can only restart completed games' });
             return;
