@@ -989,7 +989,8 @@ async function restartGame(room) {
         player.hasVoted = false;
     });
     
-    room.dbGameId = await logGameCreated(room.code, room.gmSocketId);
+    // Create a new game record for the restart (this is the key change)
+    room.dbGameId = await logGameRestart(room.code, room.gmSocketId);
     await initializePresetCategories(room.dbGameId);
     
     try {
@@ -1110,8 +1111,8 @@ initializeDatabase();
 // Database helper functions
 function logGameCreated(roomCode, gmSocketId) {
     return new Promise((resolve, reject) => {
-        const stmt = db.prepare(`INSERT INTO games (room_code, gm_id, started_at, status) VALUES (?, ?, ?, ?)`);
-        stmt.run(roomCode, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
+        const stmt = db.prepare(`INSERT INTO games (room_code, session_number, gm_id, started_at, status) VALUES (?, ?, ?, ?, ?)`);
+        stmt.run(roomCode, 1, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
             if (err) {
                 console.error('DB Error creating game:', err);
                 reject(err);
@@ -1184,6 +1185,42 @@ function logVote(submissionId, voterPlayerId, vote) {
             }
         });
         stmt.finalize();
+    });
+}
+
+function logGameRestart(roomCode, gmSocketId) {
+    return new Promise((resolve, reject) => {
+        // First, find the highest session number for this room
+        db.get(
+            `SELECT COALESCE(MAX(session_number), 0) + 1 as next_session 
+             FROM games WHERE room_code = ?`, 
+            [roomCode], 
+            (err, row) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                const sessionNumber = row.next_session;
+                
+                // Create new game record with incremented session number
+                const stmt = db.prepare(`
+                    INSERT INTO games (room_code, session_number, gm_id, started_at, status) 
+                    VALUES (?, ?, ?, ?, ?)
+                `);
+                
+                stmt.run(roomCode, sessionNumber, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
+                    if (err) {
+                        console.error('DB Error creating restart game:', err);
+                        reject(err);
+                    } else {
+                        console.log(`DB: Game restart ${roomCode} session ${sessionNumber} created with ID ${this.lastID}`);
+                        resolve(this.lastID);
+                    }
+                });
+                stmt.finalize();
+            }
+        );
     });
 }
 
@@ -1845,6 +1882,7 @@ app.get('/export/csv', (req, res) => {
         const query = `
         SELECT 
             g.room_code,
+            g.session_number,
             g.created_at as game_start,
             g.ended_at as game_end,
             r.round_number,
@@ -1862,7 +1900,7 @@ app.get('/export/csv', (req, res) => {
         JOIN players p ON s.player_id = p.id
         LEFT JOIN votes v ON s.id = v.submission_id
         LEFT JOIN players voter ON v.voter_player_id = voter.id
-        ORDER BY g.created_at, r.round_number, s.exemplar, voter.nickname
+        ORDER BY g.room_code, g.session_number, r.round_number, s.exemplar, voter.nickname
         `;
         
         db.all(query, [], (err, data) => {
@@ -1871,7 +1909,7 @@ app.get('/export/csv', (req, res) => {
             }
             
             const csv = [
-                'room_code,game_start,game_end,round_number,category,submitter,exemplar,points_earned,yes_votes,no_votes,voter_choice,voter_name',
+                'room_code,session_number,game_start,game_end,round_number,category,submitter,exemplar,points_earned,yes_votes,no_votes,voter_choice,voter_name',
                 ...data.map(row => Object.values(row).map(val => 
                     val === null ? '' : `"${val}"`
                 ).join(','))
