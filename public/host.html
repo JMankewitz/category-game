@@ -1532,6 +1532,12 @@
             showScreen('lobby');
         });
 
+        socket.on('host-disconnected', () => {
+            // Clear host data if we lose connection
+            localStorage.removeItem('hostRoomCode');
+            localStorage.removeItem('isHost');
+        });
+
         socket.on('room-update', (data) => {
             console.log('Room update:', data);
             

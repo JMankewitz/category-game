@@ -1547,6 +1547,38 @@ io.on('connection', (socket) => {
         console.log(`Host added category "${cleanCategory}" in room ${room.code}`);
     });
 
+    // Host reconnection handler (add this to server.js)
+    socket.on('reconnect-host', async ({ roomCode }) => {
+        const room = rooms.get(roomCode);
+        
+        if (!room) {
+            socket.emit('host-reconnect-error', { message: 'Room not found' });
+            return;
+        }
+        
+        // Check if room already has a host connected
+        if (room.gmSocketId && room.gmSocketId !== socket.id) {
+            socket.emit('host-reconnect-error', { message: 'Room already has an active host' });
+            return;
+        }
+        
+        // Reconnect as host
+        room.gmSocketId = socket.id;
+        socket.join(roomCode);
+        
+        socket.emit('host-reconnect-success', { 
+            roomCode,
+            gameState: room.gameState,
+            round: room.round,
+            maxRounds: room.maxRounds
+        });
+        
+        // Send current state to display
+        updateDisplay(room);
+        
+        console.log(`Host reconnected to room ${roomCode}`);
+    });
+
     // Start game from lobby phase
     socket.on('start-lobby-game', async (data) => {
         const room = findRoomBySocketId(socket.id);
@@ -1812,7 +1844,7 @@ io.on('connection', (socket) => {
             room.gmSocketId = null;
             room.players.forEach(player => {
                 if (player.isConnected && player.socketId) {
-                    io.to(player.socketId).emit('gm-disconnected');
+                    io.to(player.socketId).emit('host-disconnected');
                 }
             });
             // Grace period before cleanup
@@ -1821,7 +1853,7 @@ io.on('connection', (socket) => {
                     rooms.delete(mapping.roomCode);
                     console.log(`Room ${mapping.roomCode} deleted after GM grace period`);
                 }
-            }, 300000); // 5 minutes
+            }, 200000); // 5 minutes
             
             console.log(`GM disconnected from room ${mapping.roomCode}`);
 
