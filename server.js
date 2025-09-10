@@ -1795,6 +1795,65 @@ io.on('connection', (socket) => {
         console.log(`Game ended in room ${room.code}`);
     });
 
+    socket.on('leave-game', async () => {
+        console.log('Player requesting to leave game:', socket.id);
+        
+        const mapping = socketToPlayer.get(socket.id);
+        if (!mapping) {
+            console.log('No mapping found for socket:', socket.id);
+            return;
+        }
+
+        const room = rooms.get(mapping.roomCode);
+        if (!room) {
+            console.log('No room found for code:', mapping.roomCode);
+            removeSocketMapping(socket.id);
+            return;
+        }
+
+        const player = room.players.get(mapping.playerId);
+        if (player) {
+            // Mark player as disconnected
+            player.isConnected = false;
+            player.socketId = null;
+
+            try {
+                await setPlayerConnected(mapping.playerId, false);
+                await logPlayerLeft(socket.id, room.dbGameId);
+            } catch (error) {
+                console.error('Error updating player leave status:', error);
+            }
+
+            // Remove from room if game is complete (optional cleanup)
+            if (room.gameState === 'game-complete') {
+                room.players.delete(mapping.playerId);
+            }
+
+            console.log(`Player ${player.nickname} left room ${mapping.roomCode}`);
+            
+            // Broadcast update to remaining players
+            try {
+                broadcastGameState(room);
+            } catch (error) {
+                console.error('Error broadcasting game state after leave:', error);
+            }
+
+            // Update display
+            if (room.displaySocketId) {
+                io.to(room.displaySocketId).emit('player-left', { nickname: player.nickname });
+                updateDisplay(room);
+            }
+        }
+
+        // Clean up socket mapping
+        removeSocketMapping(socket.id);
+        
+        // Leave the socket room
+        socket.leave(mapping.roomCode);
+        
+        console.log(`Socket ${socket.id} left game and cleaned up mappings`);
+    });
+
     // Handle disconnections
     socket.on('disconnect', async () => {
         console.log('Client disconnected:', socket.id);

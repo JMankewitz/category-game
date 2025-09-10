@@ -543,7 +543,14 @@
                     <div class="final-results" id="finalResults">
                         <!-- Final scores will be populated here -->
                     </div>
-                    <p style="margin-top: 1rem; font-style: italic;">Waiting for host to start a new game...</p>
+                    <div class="game-complete-actions">
+                        <button id="joinNewGameBtn" class="button" style="background: #667eea; margin-top: 1rem;">
+                            🎯 Join New Game
+                        </button>
+                        <p style="margin-top: 1rem; font-style: italic; font-size: 0.9rem;">
+                            Or wait for host to restart this game...
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -644,7 +651,7 @@
         const submitCategoryBtn = document.getElementById('submitCategoryBtn');
         const categorySuccess = document.getElementById('categorySuccess');
         const lobbyPlayerCount = document.getElementById('lobbyPlayerCount');
-
+        const joinNewGameBtn = document.getElementById('joinNewGameBtn');
         let playerTimerState = {
             remaining: 0,
             total: 0,
@@ -689,6 +696,52 @@
                 } else {
                     socket.on('connect', attemptReconnection);
                 }
+            }
+        });
+
+        joinNewGameBtn.addEventListener('click', () => {
+            if (confirm('Leave this game and join a new one?')) {
+                // Clear all saved game data
+                localStorage.removeItem('roomCode');
+                localStorage.removeItem('playerId');
+                localStorage.removeItem('nickname');
+                
+                // Reset connection state
+                connectionState = {
+                    isConnected: false,
+                    isReconnecting: false,
+                    currentRoomCode: null,
+                    currentPlayerId: null,
+                    currentNickname: null,
+                    gameState: null,
+                    reconnectAttempts: 0,
+                    maxReconnectAttempts: 10
+                };
+                
+                // Reset game state variables
+                hasSubmittedThisRound = false;
+                mySubmission = '';
+                currentRound = 0;
+                currentPlayerScore = 0;
+                
+                // Clear any socket mappings on server side
+                socket.emit('leave-game');
+                
+                // Reset timer
+                resetPlayerTimer();
+                
+                // Show join form
+                joinForm.style.display = 'block';
+                gameArea.style.display = 'none';
+                
+                // Clear form inputs
+                roomCodeInput.value = '';
+                nicknameInput.value = '';
+                
+                // Focus on room code input
+                roomCodeInput.focus();
+                
+                console.log('Player returned to join form for new game');
             }
         });
 
