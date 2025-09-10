@@ -1519,7 +1519,12 @@
 
         // Handle category submissions update
         socket.on('categories-update', (data) => {
+            console.log('Categories update received:', data);
             updateCategoryBubbles(data.categorySubmissions);
+            
+            // Update the start button state when new categories come in
+            const playerCount = Array.from(document.querySelectorAll('#lobbyPlayerBubbles .player-bubble')).length;
+            updateStartButtonState(playerCount, data.categorySubmissions?.length || 0);
         });
 
         socket.on('player-reconnected', (data) => {
@@ -1543,7 +1548,12 @@
             
             if (data.players) {
                 populateInitialBubbles(data.players, lobbyPlayerBubbles);
-                updateStartButtonState(data.playerCount, categoryBubbles.children.length);
+                updateStartButtonState(data.players.length, data.categorySubmissions?.length || 0);
+            }
+            
+            // Handle category submissions in room updates
+            if (data.categorySubmissions) {
+                updateCategoryBubbles(data.categorySubmissions);
             }
         });
 
@@ -1687,6 +1697,7 @@
                         populateInitialBubbles(data.players, lobbyPlayerBubbles);
                         updateStartButtonState(data.players.length, data.categorySubmissions?.length || 0);
                     }
+                    // IMPORTANT: Make sure categories are updated here too
                     if (data.categorySubmissions) {
                         updateCategoryBubbles(data.categorySubmissions);
                     }

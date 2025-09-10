@@ -7,7 +7,24 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    transports: ['websocket', 'polling'],
+    upgradeTimeout: 30000,
+    pingTimeout: 30000,
+    pingInterval: 25000,
+    allowEIO3: true
+});
+
+io.engine.on('connection_error', (err) => {
+    console.log('Socket.IO connection error:', err.req);
+    console.log('Error code:', err.code);
+    console.log('Error message:', err.message);
+    console.log('Error context:', err.context);
+});
 
 // Serve static files from public directory
 app.use(express.static('public'));
@@ -1496,26 +1513,39 @@ io.on('connection', (socket) => {
         const cleanCategory = category.trim().toLowerCase();
         
         // Log to database for research purposes
-        await logCategorySubmission(room.dbGameId, player.dbPlayerId, cleanCategory, false);
-        
-        // Add to room's category submissions for display
-        room.categorySubmissions.push({
-            playerId: mapping.playerId,
-            nickname: player.nickname,
-            category: cleanCategory
-        });
-        
-        // Send confirmation to submitter
-        socket.emit('category-submitted', { category: cleanCategory });
-        
-        if (room.displaySocketId) {
-            io.to(room.displaySocketId).emit('categories-update', {
-                categorySubmissions: room.categorySubmissions
+        try {
+            // Log to database for research purposes
+            await logCategorySubmission(room.dbGameId, player.dbPlayerId, cleanCategory, false);
+            
+            // Add to room's category submissions for display
+            room.categorySubmissions.push({
+                playerId: mapping.playerId,
+                nickname: player.nickname,
+                category: cleanCategory
             });
+            
+            // Send confirmation to submitter
+            socket.emit('category-submitted', { category: cleanCategory });
+            
+            // FIXED: Always send to display AND broadcast room update
+            if (room.displaySocketId) {
+                io.to(room.displaySocketId).emit('categories-update', {
+                    categorySubmissions: room.categorySubmissions
+                });
+            }
+            
+            // Also broadcast a room update so everyone stays in sync
+            try {
+                broadcastGameState(room);
+            } catch (error) {
+                console.error('Error broadcasting game state after category submission:', error);
+            }
+
+            console.log(`Player ${player.nickname} submitted category "${cleanCategory}"`);
+        } catch (error) {
+            console.error('Error handling category submission:', error);
+            socket.emit('error', { message: 'Failed to submit category' });
         }
-
-        console.log(`Player ${player.nickname} submitted category "${cleanCategory}"`);
-
     });
 
     // Host adds category via display interface
@@ -1547,6 +1577,13 @@ io.on('connection', (socket) => {
         console.log(`Host added category "${cleanCategory}" in room ${room.code}`);
     });
 
+    socket.on('error', (error) => {
+        console.error('Socket error for', socket.id, ':', error);
+    });
+
+    socket.on('connect_error', (error) => {
+        console.error('Socket connect error for', socket.id, ':', error);
+    });
 
     // Start game from lobby phase
     socket.on('start-lobby-game', async (data) => {
