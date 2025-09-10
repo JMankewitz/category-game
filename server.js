@@ -1011,6 +1011,7 @@ function initializeDatabase() {
         CREATE TABLE IF NOT EXISTS games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_code TEXT NOT NULL UNIQUE,
+            session_number INTEGER DEFAULT 1,
             gm_id TEXT,
             started_at DATETIME,
             ended_at DATETIME,
