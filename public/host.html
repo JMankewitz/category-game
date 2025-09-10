@@ -1742,6 +1742,17 @@
                 s.classList.add('hidden');
             });
 
+            const topRoomCode = document.getElementById('roomCode');
+            const topRoundCounter = document.getElementById('roundCounter');
+            
+            if (screen === 'lobby') {
+                topRoomCode.style.display = 'none';
+                topRoundCounter.style.display = 'none';
+            } else {
+                topRoomCode.style.display = 'block';
+                topRoundCounter.style.display = 'block';
+            }
+
             gameCompleteActions.classList.add('hidden');
 
             switch(screen) {
