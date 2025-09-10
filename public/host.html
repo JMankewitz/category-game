@@ -1506,14 +1506,22 @@
         window.addEventListener('load', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const existingRoom = urlParams.get('room');
+            const savedHostRoom = localStorage.getItem('hostRoomCode');
+            const isHost = localStorage.getItem('isHost');
             
-            if (!existingRoom) {
-                socket.emit('create-room');
-            } else {
+            if (existingRoom) {
+                // Joining specific room via URL
                 currentRoomCode = existingRoom.toUpperCase();
                 roomCodeDisplay.textContent = currentRoomCode;
-                lobbyRoomCode.textContent = currentRoomCode; // ADD THIS LINE
+                lobbyRoomCode.textContent = currentRoomCode;
                 socket.emit('join-display', { roomCode: currentRoomCode });
+            } else if (savedHostRoom && isHost === 'true') {
+                // Try to reconnect as host
+                console.log('Attempting host reconnection to room:', savedHostRoom);
+                socket.emit('reconnect-host', { roomCode: savedHostRoom });
+            } else {
+                // Create new room
+                socket.emit('create-room');
             }
         });
 
@@ -1573,10 +1581,13 @@
         socket.on('room-created', (data) => {
             currentRoomCode = data.roomCode;
             roomCodeDisplay.textContent = currentRoomCode;
-            lobbyRoomCode.textContent = currentRoomCode; // ADD THIS LINE
+            lobbyRoomCode.textContent = currentRoomCode;
 
+            // Store for host reconnection
+            localStorage.setItem('hostRoomCode', currentRoomCode);
+            localStorage.setItem('isHost', 'true');
+            
             roomCodeDisplay.style.display = 'block';
-
             socket.emit('join-display', { roomCode: currentRoomCode });
             
             console.log('Room created:', currentRoomCode);
