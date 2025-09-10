@@ -1547,37 +1547,6 @@ io.on('connection', (socket) => {
         console.log(`Host added category "${cleanCategory}" in room ${room.code}`);
     });
 
-    // Host reconnection handler (add this to server.js)
-    socket.on('reconnect-host', async ({ roomCode }) => {
-        const room = rooms.get(roomCode);
-        
-        if (!room) {
-            socket.emit('host-reconnect-error', { message: 'Room not found' });
-            return;
-        }
-        
-        // Check if room already has a host connected
-        if (room.gmSocketId && room.gmSocketId !== socket.id) {
-            socket.emit('host-reconnect-error', { message: 'Room already has an active host' });
-            return;
-        }
-        
-        // Reconnect as host
-        room.gmSocketId = socket.id;
-        socket.join(roomCode);
-        
-        socket.emit('host-reconnect-success', { 
-            roomCode,
-            gameState: room.gameState,
-            round: room.round,
-            maxRounds: room.maxRounds
-        });
-        
-        // Send current state to display
-        updateDisplay(room);
-        
-        console.log(`Host reconnected to room ${roomCode}`);
-    });
 
     // Start game from lobby phase
     socket.on('start-lobby-game', async (data) => {
