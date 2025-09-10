@@ -176,16 +176,28 @@ function findRoomBySocketId(socketId) {
     // First check if it's a player socket
     const mapping = socketToPlayer.get(socketId);
     if (mapping) {
-        return rooms.get(mapping.roomCode);
+        const room = rooms.get(mapping.roomCode);
+        if (room) {
+            console.log(`Found room ${room.code} for player socket ${socketId}`);
+            return room;
+        } else {
+            console.error(`Player socket ${socketId} mapped to room ${mapping.roomCode} but room not found`);
+        }
     }
     
     // If not a player, check if it's a GM or display socket
     for (const room of rooms.values()) {
-        if (room.gmSocketId === socketId || room.displaySocketId === socketId) {
+        if (room.gmSocketId === socketId) {
+            console.log(`Found room ${room.code} for GM socket ${socketId}`);
+            return room;
+        }
+        if (room.displaySocketId === socketId) {
+            console.log(`Found room ${room.code} for display socket ${socketId}`);
             return room;
         }
     }
     
+    console.error(`No room found for socket ${socketId}. Player mapping:`, !!mapping, 'Total rooms:', rooms.size);
     return null;
 }
 
@@ -1625,6 +1637,18 @@ io.on('connection', (socket) => {
         const { maxRounds } = data;
         const room = findRoomBySocketId(socket.id);
         
+        if (!room) {
+            console.error(`Room not found for socket ${socket.id} in set-max-rounds`);
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
+        
+        // Verify this is the host/GM or display
+        if (room.gmSocketId !== socket.id && room.displaySocketId !== socket.id) {
+            console.error(`Unauthorized max-rounds request from socket ${socket.id}`);
+            socket.emit('error', { message: 'Only host can set max rounds' });
+            return;
+        }
         
         if (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 50) {
             socket.emit('error', { message: 'Round limit must be between 1 and 50' });
@@ -1633,10 +1657,18 @@ io.on('connection', (socket) => {
         
         room.maxRounds = maxRounds;
         
+        // Send confirmation to the requester
         socket.emit('max-rounds-updated', { maxRounds });
+        
+        // Update display if this wasn't sent from display
+        if (room.displaySocketId && room.displaySocketId !== socket.id) {
+            io.to(room.displaySocketId).emit('max-rounds-updated', { maxRounds });
+        }
+        
+        // Update the display state
         updateDisplay(room);
         
-        console.log(`Max rounds set to ${maxRounds} in room ${room.code}`);
+        console.log(`Max rounds set to ${maxRounds} in room ${room.code} by socket ${socket.id}`);
     });
 
     socket.on('restart-game', async () => {
@@ -1665,18 +1697,30 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomCode);
 
         if (!room) {
+            console.error(`Display trying to join non-existent room: ${roomCode}`);
             socket.emit('error', { message: 'Room not found' });
             return;
         }
 
+        // Clear any existing display socket for this room
+        if (room.displaySocketId && room.displaySocketId !== socket.id) {
+            console.log(`Replacing existing display socket ${room.displaySocketId} with ${socket.id} in room ${roomCode}`);
+        }
+
         room.displaySocketId = socket.id;
         socket.join(roomCode);
+        
+        console.log(`Display socket ${socket.id} registered for room ${roomCode}`);
+        
+        // Send confirmation BEFORE sending state
         socket.emit('display-connected', { roomCode });
         
-        // Send current state to display
-        updateDisplay(room);
-
-        console.log(`Display connected to room ${roomCode}`);
+        // Small delay to ensure socket is fully registered
+        setTimeout(() => {
+            // Send current state to display
+            updateDisplay(room);
+            console.log(`Initial state sent to display for room ${roomCode}`);
+        }, 100);
     });
 
     // Player submits exemplar
