@@ -1546,6 +1546,36 @@
             localStorage.removeItem('isHost');
         });
 
+        socket.on('host-reconnect-success', (data) => {
+            console.log('Host reconnection successful:', data);
+            
+            currentRoomCode = data.roomCode;
+            roomCodeDisplay.textContent = currentRoomCode;
+            lobbyRoomCode.textContent = currentRoomCode;
+            
+            // Show elements now that we have real data
+            roomCodeDisplay.style.display = 'block';
+            
+            // Join as display
+            socket.emit('join-display', { roomCode: currentRoomCode });
+            
+            // Ensure we're showing the lobby screen
+            showScreen('lobby');
+            
+            console.log(`Host reconnected to room ${currentRoomCode}`);
+        });
+
+        socket.on('host-reconnect-error', (data) => {
+            console.log('Host reconnection failed:', data.message);
+            
+            // Clear invalid saved data
+            localStorage.removeItem('hostRoomCode');
+            localStorage.removeItem('isHost');
+            
+            // Create new room instead
+            socket.emit('create-room');
+        });
+
         socket.on('room-update', (data) => {
             console.log('Room update:', data);
             
