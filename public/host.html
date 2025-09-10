@@ -1003,6 +1003,10 @@
             white-space: nowrap;
         }
 
+        .room-code, .round-counter {
+            display: none;
+        }
+
         .host-button:hover {
             background: #5a6fd8;
             transform: translateY(-1px);
@@ -1565,6 +1569,8 @@
             roomCodeDisplay.textContent = currentRoomCode;
             lobbyRoomCode.textContent = currentRoomCode; // ADD THIS LINE
 
+            roomCodeDisplay.style.display = 'block';
+            
             socket.emit('join-display', { roomCode: currentRoomCode });
             
             console.log('Room created:', currentRoomCode);
