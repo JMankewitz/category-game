@@ -1783,6 +1783,7 @@
                     categoryText.textContent = 'Need more categories!';
                     phaseMessage.textContent = 'Host can add categories using the controls below';
                     submissionCounter.style.display = 'none';
+                    timerDisplay.classList.add('hidden');
                     break;
                     
                 case 'submitting':
@@ -1800,20 +1801,24 @@
                     // Enhanced results mode - waiting for auto progression
                     waitingScreen.classList.remove('hidden');
                     waitingMessage.textContent = 'Preparing results...';
+                    timerDisplay.classList.add('hidden')
                     break;
                     
                 case 'controversy':
                     controversySummary.classList.remove('hidden');
+                    timerDisplay.classList.add('hidden');
                     break;
                     
                 case 'scoreboard':
                     roundScoreboard.classList.remove('hidden');
+                    timerDisplay.classList.add('hidden');
                     break;
                     
                 default:
                     waitingScreen.classList.remove('hidden');
                     waitingMessage.textContent = 'Waiting for game to start...';
                     playersWaiting.style.display = 'block';
+                    timerDisplay.classList.add('hidden');
                     break;
             }
         }
