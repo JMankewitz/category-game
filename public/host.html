@@ -1239,7 +1239,7 @@
     </div>
     <div class="main-content">
         <!-- Waiting for room connection -->
-        <div id="waitingScreen">
+        <div id="waitingScreen" class="hidden">
             <div class="game-title">Category Game</div>
             <div class="phase-message" id="waitingMessage">Waiting for game to start...</div>
             
@@ -1253,7 +1253,7 @@
         </div>
 
         <!-- Lobby/Category Management Screen -->
-        <div id="lobbyScreen" class="hidden">
+        <div id="lobbyScreen">
             <div class="lobby-top-sections">
                 <!-- Room Code Display - Left -->
                 <div class="lobby-room-display-standalone">
@@ -1544,7 +1544,6 @@
             lobbyRoomCode.textContent = currentRoomCode; // ADD THIS LINE
 
             socket.emit('join-display', { roomCode: currentRoomCode });
-            showScreen('lobby');
             
             console.log('Room created:', currentRoomCode);
         });
