@@ -1529,7 +1529,7 @@
         // Socket events
         socket.on('display-connected', (data) => {
             console.log('Display connected to room:', data.roomCode);
-            showScreen('waiting');
+            showScreen('lobby');
         });
 
         socket.on('room-update', (data) => {
@@ -1570,7 +1570,7 @@
             lobbyRoomCode.textContent = currentRoomCode; // ADD THIS LINE
 
             roomCodeDisplay.style.display = 'block';
-            
+
             socket.emit('join-display', { roomCode: currentRoomCode });
             
             console.log('Room created:', currentRoomCode);
