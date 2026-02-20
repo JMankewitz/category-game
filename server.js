@@ -2122,19 +2122,12 @@ io.on('connection', (socket) => {
                     console.error('Error broadcasting game state:', error);
                 }
 
-                // Re-check completion after a short delay to allow quick reconnects.
-                // Without this, a page refresh immediately advances the phase if everyone
-                // else already submitted/voted.
-                setTimeout(() => {
-                    const currentPlayer = room.players.get(mapping.playerId);
-                    if (currentPlayer && !currentPlayer.isConnected) {
-                        if (room.gameState === 'submitting') {
-                            checkSubmissionComplete(room);
-                        } else if (room.gameState === 'voting') {
-                            checkVotingComplete(room);
-                        }
-                    }
-                }, 5000);
+                // Re-check completion in case all remaining players already submitted/voted
+                if (room.gameState === 'submitting') {
+                    checkSubmissionComplete(room);
+                } else if (room.gameState === 'voting') {
+                    checkVotingComplete(room);
+                }
 
                 console.log(`Player ${player.nickname} disconnected from room ${mapping.roomCode}`);
 

@@ -1663,23 +1663,13 @@
         window.addEventListener('load', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const existingRoom = urlParams.get('room');
-
+            
             if (!existingRoom) {
                 socket.emit('create-room');
             } else {
                 currentRoomCode = existingRoom.toUpperCase();
                 roomCodeDisplay.textContent = currentRoomCode;
                 lobbyRoomCode.textContent = currentRoomCode;
-                socket.emit('join-display', { roomCode: currentRoomCode });
-            }
-        });
-
-        // Re-register with the room on every socket reconnect.
-        // Socket.IO fires 'connect' on initial connection and after any reconnect.
-        // If currentRoomCode is already set, this is a reconnect — re-emit join-display
-        // so the server restores displaySocketId and resends the current game state.
-        socket.on('connect', () => {
-            if (currentRoomCode) {
                 socket.emit('join-display', { roomCode: currentRoomCode });
             }
         });
