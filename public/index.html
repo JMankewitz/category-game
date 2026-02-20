@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Category Game</title>
+    <title>Split the Room</title>
     <style>
         * {
             margin: 0;
@@ -13,102 +13,310 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        /* ── Header ─────────────────────────────────────────── */
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.4rem;
+        }
+
+        .header p {
+            font-size: 1rem;
+            opacity: 0.85;
+        }
+
+        /* ── Action cards (Step 1) ───────────────────────────── */
+        .action-card {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
+            background: white;
+            border: none;
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            color: #222;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            text-align: left;
+        }
+
+        .action-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        }
+
+        .action-card:active {
+            transform: translateY(-1px);
+        }
+
+        .action-icon {
+            flex-shrink: 0;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        .container {
-            background: white;
-            padding: 3rem;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
+        .action-icon.purple {
+            background: linear-gradient(135deg, #764ba2, #667eea);
         }
 
-        h1 {
-            color: #333;
-            margin-bottom: 0.5rem;
-            font-size: 2.5rem;
+        .action-icon.indigo {
+            background: linear-gradient(135deg, #667eea, #4ecdc4);
+        }
+
+        .action-text h3 {
+            font-size: 1.1rem;
             font-weight: 700;
+            margin-bottom: 0.2rem;
         }
 
-        .subtitle {
-            color: #666;
-            margin-bottom: 2rem;
-            font-size: 1.1rem;
-        }
-
-        .button {
-            display: block;
-            width: 100%;
-            padding: 1rem;
-            margin: 1rem 0;
-            background: #667eea;
-            color: white;
-            text-decoration: none;
-            border-radius: 12px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-        }
-
-        .button:hover {
-            background: #5a6fd8;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        .button.secondary {
-            background: #764ba2;
-        }
-
-        .button.secondary:hover {
-            background: #6a4190;
-            box-shadow: 0 8px 20px rgba(118, 75, 162, 0.3);
-        }
-
-        .description {
+        .action-text p {
+            font-size: 0.85rem;
             color: #777;
-            margin-top: 2rem;
-            font-size: 0.9rem;
-            line-height: 1.5;
         }
 
-        @media (max-width: 480px) {
-            .container {
-                padding: 2rem;
-            }
-            
-            h1 {
-                font-size: 2rem;
+        /* ── Mode cards (Step 2) ─────────────────────────────── */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .mode-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem 1rem;
+            text-decoration: none;
+            color: #222;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            text-align: center;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+        }
+
+        .mode-card:active {
+            transform: translateY(-1px);
+        }
+
+        .mode-card svg {
+            margin-bottom: 1rem;
+        }
+
+        .mode-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+        }
+
+        .mode-card p {
+            font-size: 0.78rem;
+            color: #777;
+            line-height: 1.4;
+        }
+
+        /* ── Step containers ─────────────────────────────────── */
+        .step {
+            animation: fadeIn 0.22s ease;
+        }
+
+        .step.hidden {
+            display: none;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Back button ─────────────────────────────────────── */
+        .back-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0.5rem 0;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: color 0.15s;
+        }
+
+        .back-btn:hover {
+            color: white;
+        }
+
+        .step2-heading {
+            color: white;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+        }
+
+        @media (max-width: 360px) {
+            .mode-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Category Game</h1>
-        <div class="subtitle">Test the boundaries of categories together</div>
-        
-        <a href="/player.html" class="button secondary">
-             👤 Join Game
-        </a>
-        
-        <a href="/host.html" class="button">
-            🎮 Host New Game
-        </a>
-        
-        <div class="description">
-            <strong>Game Hosts</strong> create rooms and control the game flow.<br>
-            <strong>Players</strong> join with room codes and participate in the game.<br>
+
+        <!-- Step 1: main options -->
+        <div id="step1" class="step">
+            <div class="header">
+                <h1>Split the Room</h1>
+                <p>Test the boundaries of categories together</p>
+            </div>
+
+            <button class="action-card" onclick="showStep2()">
+                <div class="action-icon purple">
+                    <!-- Play / sparkle icon -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                </div>
+                <div class="action-text">
+                    <h3>Start a new game</h3>
+                    <p>Create a room and invite players</p>
+                </div>
+            </button>
+
+            <a class="action-card" href="/player.html">
+                <div class="action-icon indigo">
+                    <!-- Enter / arrow icon -->
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                        <polyline points="10 17 15 12 10 7"/>
+                        <line x1="15" y1="12" x2="3" y2="12"/>
+                    </svg>
+                </div>
+                <div class="action-text">
+                    <h3>Join existing game</h3>
+                    <p>Enter a room code to join</p>
+                </div>
+            </a>
         </div>
+
+        <!-- Step 2: mode selection -->
+        <div id="step2" class="step hidden">
+            <button class="back-btn" onclick="showStep1()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Back
+            </button>
+
+            <p class="step2-heading">How are you playing?</p>
+
+            <div class="mode-grid">
+
+                <!-- Host View -->
+                <a class="mode-card" href="/host.html">
+                    <svg width="88" height="80" viewBox="0 0 88 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Monitor -->
+                        <rect x="16" y="6" width="56" height="38" rx="4" stroke="#667eea" stroke-width="2.5" fill="#f0f2ff"/>
+                        <!-- Screen bezel inner -->
+                        <rect x="20" y="10" width="48" height="30" rx="2" fill="#667eea" opacity="0.15"/>
+                        <!-- Stand neck -->
+                        <rect x="40" y="44" width="8" height="8" rx="1" fill="#667eea" opacity="0.5"/>
+                        <!-- Stand base -->
+                        <rect x="30" y="52" width="28" height="4" rx="2" fill="#667eea" opacity="0.5"/>
+                        <!-- Phone left -->
+                        <rect x="4" y="58" width="16" height="18" rx="3" stroke="#764ba2" stroke-width="2" fill="#f5f0ff"/>
+                        <circle cx="12" cy="73" r="1.5" fill="#764ba2" opacity="0.6"/>
+                        <!-- Phone center -->
+                        <rect x="36" y="60" width="16" height="18" rx="3" stroke="#764ba2" stroke-width="2" fill="#f5f0ff"/>
+                        <circle cx="44" cy="75" r="1.5" fill="#764ba2" opacity="0.6"/>
+                        <!-- Phone right -->
+                        <rect x="68" y="58" width="16" height="18" rx="3" stroke="#764ba2" stroke-width="2" fill="#f5f0ff"/>
+                        <circle cx="76" cy="73" r="1.5" fill="#764ba2" opacity="0.6"/>
+                        <!-- Connecting lines from monitor stand to phones -->
+                        <line x1="34" y1="56" x2="14" y2="58" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.5"/>
+                        <line x1="44" y1="56" x2="44" y2="60" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.5"/>
+                        <line x1="54" y1="56" x2="74" y2="58" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.5"/>
+                    </svg>
+                    <h3>Host View</h3>
+                    <p>Use a shared screen — TV or laptop</p>
+                </a>
+
+                <!-- Player View -->
+                <a class="mode-card" href="/player.html?create=1">
+                    <svg width="88" height="80" viewBox="0 0 88 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Top phone -->
+                        <rect x="36" y="4" width="16" height="22" rx="3" stroke="#667eea" stroke-width="2" fill="#f0f2ff"/>
+                        <circle cx="44" cy="23" r="1.5" fill="#667eea" opacity="0.6"/>
+                        <!-- Right phone -->
+                        <rect x="64" y="30" width="16" height="22" rx="3" stroke="#764ba2" stroke-width="2" fill="#f5f0ff"/>
+                        <circle cx="72" cy="49" r="1.5" fill="#764ba2" opacity="0.6"/>
+                        <!-- Bottom phone -->
+                        <rect x="36" y="54" width="16" height="22" rx="3" stroke="#667eea" stroke-width="2" fill="#f0f2ff"/>
+                        <circle cx="44" cy="73" r="1.5" fill="#667eea" opacity="0.6"/>
+                        <!-- Left phone -->
+                        <rect x="8" y="30" width="16" height="22" rx="3" stroke="#764ba2" stroke-width="2" fill="#f5f0ff"/>
+                        <circle cx="16" cy="49" r="1.5" fill="#764ba2" opacity="0.6"/>
+                        <!-- Ring connecting lines -->
+                        <line x1="44" y1="26" x2="63" y2="33" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
+                        <line x1="63" y1="52" x2="52" y2="56" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
+                        <line x1="36" y1="56" x2="25" y2="52" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
+                        <line x1="25" y1="33" x2="36" y2="26" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
+                    </svg>
+                    <h3>Player View</h3>
+                    <p>Everyone plays on their own device</p>
+                </a>
+
+            </div>
+        </div>
+
     </div>
+
+    <script>
+        function showStep2() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        }
+
+        function showStep1() {
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step1').classList.remove('hidden');
+        }
+    </script>
 </body>
 </html>

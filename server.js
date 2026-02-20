@@ -4,6 +4,7 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const dbStorage = require('./db-storage');
 
 const app = express();
 const server = http.createServer(app);
@@ -37,10 +38,35 @@ const socketToPlayer = new Map(); // socketId -> {roomCode, playerId}
 
 // Initialize database
 const dbPath = path.join(__dirname, 'game_data.db');
-const db = new sqlite3.Database(dbPath);
+let db = null;
 
-// Enable foreign keys
-db.run('PRAGMA foreign_keys = ON');
+// Initialize database with Cloud Storage support
+async function initializeDatabaseWithStorage() {
+    // Initialize Cloud Storage if available
+    dbStorage.initStorage();
+    
+    // Try to download existing database from Cloud Storage
+    await dbStorage.downloadDatabase(dbPath);
+    
+    // Open database connection
+    db = new sqlite3.Database(dbPath);
+    
+    // Enable foreign keys
+    db.run('PRAGMA foreign_keys = ON');
+    
+    // Initialize database schema
+    await new Promise((resolve, reject) => {
+        initializeDatabase().then(resolve).catch(reject);
+    });
+    
+    // Setup periodic sync to Cloud Storage (every 5 minutes)
+    dbStorage.setupPeriodicSync(dbPath, 5 * 60 * 1000);
+    
+    // Setup graceful shutdown sync
+    dbStorage.setupShutdownSync(dbPath);
+    
+    console.log('Database initialized');
+}
 
 class GameTimer {
     constructor(duration, onComplete, onTick = null, phase = '') {
@@ -133,7 +159,9 @@ function createRoom(code) {
         code: code,
         dbGameId: null,
         players: new Map(),
-        gmSocketId: null,
+        hostSocketId: null,     // Display/host screen socket (host.html)
+        creatorPlayerId: null,         // Current active creator (can change on promotion)
+        originalCreatorPlayerId: null, // Original creator — used to restore role on reconnect
         displaySocketId: null,
         gameState: 'lobby',
         currentCategory: '',
@@ -187,8 +215,8 @@ function findRoomBySocketId(socketId) {
     
     // If not a player, check if it's a GM or display socket
     for (const room of rooms.values()) {
-        if (room.gmSocketId === socketId) {
-            console.log(`Found room ${room.code} for GM socket ${socketId}`);
+        if (room.hostSocketId === socketId) {
+            console.log(`Found room ${room.code} for host socket ${socketId}`);
             return room;
         }
         if (room.displaySocketId === socketId) {
@@ -306,6 +334,26 @@ function broadcastVoteCountUpdate(room) {
     }
 }
 
+// Check if a socket has host-level authority (display screen OR room creator player)
+function isHostAuthorized(room, socketId) {
+    if (room.hostSocketId === socketId) return true;
+    if (room.displaySocketId === socketId) return true;
+    if (room.creatorPlayerId) {
+        const creator = room.players.get(room.creatorPlayerId);
+        if (creator && creator.socketId === socketId) return true;
+    }
+    return false;
+}
+
+// Broadcast a lightweight player status change (connect/disconnect/reconnect) to all peers
+function broadcastPlayerStatus(room, nickname, status, excludeSocketId = null) {
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId && player.socketId !== excludeSocketId) {
+            io.to(player.socketId).emit('player-status-update', { nickname, status });
+        }
+    });
+}
+
 // Enhanced display update
 function updateDisplay(room) {
     if (!room.displaySocketId) return;
@@ -399,6 +447,32 @@ async function handlePlayerReconnection(socket, roomCode, playerId) {
         player.isConnected = true;
     }
 
+    // Restore player status based on actual game state
+    // This prevents players from submitting/voting twice after reconnection
+    if (room.gameState === 'submitting') {
+        // Check if player has already submitted in this round
+        player.hasSubmitted = room.submissions.some(s => s.playerId === playerId);
+        player.hasVoted = false; // Voting hasn't started yet
+    } else if (room.gameState === 'voting') {
+        // Check if player has already submitted (they should have, but verify)
+        player.hasSubmitted = room.submissions.some(s => s.playerId === playerId);
+        // Check if player has already voted
+        player.hasVoted = room.submissions.some(s => s.votes && s.votes.has(playerId));
+    } else if (room.gameState === 'results' || room.gameState === 'game-complete') {
+        // In results or game-complete, player has already submitted and voted for this round
+        // Verify against actual data if available
+        player.hasSubmitted = room.submissions && room.submissions.length > 0 
+            ? room.submissions.some(s => s.playerId === playerId) 
+            : true;
+        player.hasVoted = room.submissions && room.submissions.length > 0
+            ? room.submissions.some(s => s.votes && s.votes.has(playerId))
+            : true;
+    } else {
+        // In lobby or other states, reset flags
+        player.hasSubmitted = false;
+        player.hasVoted = false;
+    }
+
     // Update socket mapping
     updateSocketMapping(socket.id, roomCode, playerId);
     socket.join(roomCode);
@@ -414,38 +488,57 @@ async function handlePlayerReconnection(socket, roomCode, playerId) {
         console.error('DB reconnect update error:', error);
     }
 
-    // Send reconnection success with full game state
+    // If the original creator is reconnecting and their role was promoted away, restore it
+    if (room.originalCreatorPlayerId === playerId && room.creatorPlayerId !== playerId) {
+        const demotedEntry = Array.from(room.players.entries())
+            .find(([id, p]) => id === room.creatorPlayerId && p.isConnected && p.socketId);
+        if (demotedEntry) {
+            io.to(demotedEntry[1].socketId).emit('creator-demoted');
+        }
+        room.creatorPlayerId = playerId;
+        console.log(`Creator role restored to original creator ${player.nickname}`);
+    }
+
+    // Build a complete reconnect payload so the client needs no follow-up update
     const reconnectData = {
         roomCode,
         playerId,
         nickname: player.nickname,
         score: player.score,
         gameState: room.gameState,
-        round: room.round
+        round: room.round,
+        maxRounds: room.maxRounds,
+        currentCategory: room.currentCategory,
+        isCreator: room.creatorPlayerId === playerId,
+        players: Array.from(room.players.values()).map(p => ({
+            nickname: p.nickname,
+            score: p.score,
+            hasSubmitted: p.hasSubmitted,
+            hasVoted: p.hasVoted,
+            isConnected: p.isConnected
+        }))
     };
 
-    // Add timer state if active
+    // Add active timer state
     if (room.timerState) {
         const elapsed = Math.floor((Date.now() - room.timerState.timestamp) / 1000);
         const remaining = Math.max(0, room.timerState.remaining - elapsed);
-        
         if (remaining > 0) {
             reconnectData.timerRemaining = remaining;
             reconnectData.timerPhase = room.timerState.phase;
-            
-            // Send timer update
-            setTimeout(() => {
-                socket.emit('timer-update', {
-                    remaining,
-                    phase: room.timerState.phase,
-                    gameState: room.gameState
-                });
-            }, 100);
         }
     }
 
     // Add phase-specific data
-    if (room.gameState === 'voting' && room.submissions.length > 0) {
+    if (room.gameState === 'lobby') {
+        reconnectData.categorySubmissions = room.categorySubmissions || [];
+    } else if (room.gameState === 'submitting') {
+        // Include the player's own submission if they already submitted
+        const mySubmission = room.submissions.find(s => s.playerId === playerId);
+        if (mySubmission) {
+            reconnectData.mySubmission = mySubmission.exemplar;
+        }
+    } else if (room.gameState === 'voting' && room.submissions.length > 0) {
         reconnectData.submissions = room.submissions.map(s => ({
             exemplar: s.exemplar,
             submittedBy: s.nickname
@@ -454,12 +547,8 @@ async function handlePlayerReconnection(socket, roomCode, playerId) {
 
     socket.emit('reconnect-success', reconnectData);
 
-    // Broadcast to others that player reconnected
-    room.players.forEach(p => {
-        if (p.isConnected && p.socketId && p.socketId !== socket.id) {
-            io.to(p.socketId).emit('player-reconnected', { nickname: player.nickname });
-        }
-    });
+    // Broadcast to others that player reconnected (peer notification)
+    broadcastPlayerStatus(room, player.nickname, 'reconnected', socket.id);
 
     // Update display
     if (room.displaySocketId) {
@@ -467,28 +556,15 @@ async function handlePlayerReconnection(socket, roomCode, playerId) {
         updateDisplay(room);
     }
 
-    // Send current game state
+    // Broadcast updated game state to all OTHER players (not the reconnecting player)
     broadcastGameState(room, socket.id);
-    setTimeout(() => {
-        socket.emit('game-state-update', {
-            gameState: room.gameState,
-            currentCategory: room.currentCategory,
-            round: room.round,
-            players: Array.from(room.players.values()).map(p => ({
-                nickname: p.nickname,
-                score: p.score,
-                hasSubmitted: p.hasSubmitted,
-                hasVoted: p.hasVoted,
-                isConnected: p.isConnected
-            })),
-            ...(room.gameState === 'voting' && room.submissions.length > 0 ? {
-                submissions: room.submissions.map(s => ({
-                    exemplar: s.exemplar,
-                    submittedBy: s.nickname
-                }))
-            } : {})
-        });
-    }, 100);
+
+    // Re-check if everyone has already submitted/voted so the game can advance early
+    if (room.gameState === 'submitting') {
+        checkSubmissionComplete(room);
+    } else if (room.gameState === 'voting') {
+        checkVotingComplete(room);
+    }
 
     console.log(`Player ${player.nickname} successfully reconnected to room ${roomCode}`);
 }
@@ -621,119 +697,7 @@ function checkVotingComplete(room) {
     return false;
 }
 
-// Updated submission handler
-async function handleSubmitExemplar(socket, data) {
-    const mapping = socketToPlayer.get(socket.id);
-    if (!mapping) {
-        socket.emit('error', { message: 'Not in a room' });
-        return;
-    }
-
-    const room = rooms.get(mapping.roomCode);
-    const player = room.players.get(mapping.playerId);
-    
-    if (!room || !player) {
-        socket.emit('error', { message: 'Player not found' });
-        return;
-    }
-
-    if (room.gameState !== 'submitting') {
-        socket.emit('error', { message: 'Not in submission phase' });
-        return;
-    }
-
-    if (player.hasSubmitted) {
-        socket.emit('error', { message: 'Already submitted' });
-        return;
-    }
-
-    const { exemplar } = data;
-    
-    // Log to database
-    const submissionDbId = await logSubmission(room.currentRoundDbId, player.dbPlayerId, exemplar.trim());
-
-    // Add submission
-    room.submissions.push({
-        playerId: mapping.playerId, // Use playerId instead of socketId
-        nickname: player.nickname,
-        exemplar: exemplar.trim(),
-        votes: new Map(),
-        dbSubmissionId: submissionDbId
-    });
-
-    player.hasSubmitted = true;
-
-    // Send confirmation to submitting player only
-    socket.emit('submission-confirmed', { exemplar: exemplar.trim() });
-
-    // NEW WAY: Single broadcast to update all clients
-    try {
-        broadcastGameState(room);
-    } catch (error) {
-        console.error('Error broadcasting game state:', error);
-    }
-    
-    // Check for early completion
-    checkSubmissionComplete(room);
-    
-    console.log(`Player ${player.nickname} submitted "${exemplar}" in room ${room.code}`);
-}
-
-// Updated voting handler
-async function handleSubmitVotes(socket, data) {
-    const mapping = socketToPlayer.get(socket.id);
-    if (!mapping) {
-        socket.emit('error', { message: 'Not in a room' });
-        return;
-    }
-
-    const room = rooms.get(mapping.roomCode);
-    const player = room.players.get(mapping.playerId);
-    
-    if (!room || !player) {
-        socket.emit('error', { message: 'Player not found' });
-        return;
-    }
-
-    if (room.gameState !== 'voting') {
-        socket.emit('error', { message: 'Not in voting phase' });
-        return;
-    }
-
-    if (player.hasVoted) {
-        socket.emit('error', { message: 'Already voted' });
-        return;
-    }
-
-    const { votes } = data;
-
-    try {
-        // Record votes and log to database
-        for (const [exemplarIndex, vote] of Object.entries(votes || {})) {
-            const index = parseInt(exemplarIndex, 10);
-            if (Number.isInteger(index) && room.submissions[index]) {
-                // Use playerId instead of socketId for vote tracking
-                room.submissions[index].votes.set(mapping.playerId, !!vote);
-                await logVote(room.submissions[index].dbSubmissionId, player.dbPlayerId, !!vote);
-            }
-        }
-
-        player.hasVoted = true;
-
-        // FIXED: Only send vote count updates, not full game state
-        broadcastVoteCountUpdate(room);
-        
-        // Check for early completion
-        checkVotingComplete(room);
-        
-        console.log(`Player ${player.nickname} voted in room ${room.code}`);
-    } catch (error) {
-        console.error('Error submitting votes:', error);
-        socket.emit('error', { message: 'Failed to submit votes' });
-    }
-}
-
-// Updated early completion check
+// Early completion check
 function checkSubmissionComplete(room) {
     const connectedPlayers = Array.from(room.players.values())
         .filter(p => p.isConnected);
@@ -823,20 +787,29 @@ function autoAdvanceResults(room) {
     room.currentResultIndex++;
     const result = room.currentResults[room.currentResultIndex];
     
-    // Send to display
+    const exemplarResultData = {
+        exemplar: result.exemplar,
+        submittedBy: result.submittedBy,
+        votes: result.votes,
+        yesCount: result.yesCount,
+        noCount: result.noCount,
+        points: result.points,
+        currentIndex: room.currentResultIndex,
+        totalResults: room.currentResults.length
+    };
+
+    // Send to display screen if present
     if (room.displaySocketId) {
         console.log(`Emitting exemplar ${room.currentResultIndex + 1}/${room.currentResults.length} to display`);
-        io.to(room.displaySocketId).emit('show-exemplar-result', {
-            exemplar: result.exemplar,
-            submittedBy: result.submittedBy,
-            votes: result.votes,
-            yesCount: result.yesCount,
-            noCount: result.noCount,
-            points: result.points,
-            currentIndex: room.currentResultIndex,
-            totalResults: room.currentResults.length
-        });
+        io.to(room.displaySocketId).emit('show-exemplar-result', exemplarResultData);
     }
+
+    // Also send to all connected players (hostless mode / everyone sees results)
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId) {
+            io.to(player.socketId).emit('show-exemplar-result', exemplarResultData);
+        }
+    });
     
     // Schedule next result
     setTimeout(() => autoAdvanceResults(room), room.timerSettings.exemplarResult * 1000);
@@ -873,7 +846,14 @@ function autoShowSummary(room) {
     if (room.displaySocketId) {
         io.to(room.displaySocketId).emit('show-enhanced-summary', displayData);
     }
-    
+
+    // Also send to all connected players
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId) {
+            io.to(player.socketId).emit('show-enhanced-summary', displayData);
+        }
+    });
+
     // Schedule scoreboard
     setTimeout(() => autoShowScoreboard(room), room.timerSettings.summary * 1000);
 }
@@ -884,15 +864,24 @@ function autoShowScoreboard(room) {
         .map(p => ({ nickname: p.nickname, score: p.score }))
         .sort((a, b) => b.score - a.score);
 
+    const scoreboardData = {
+        players: sortedPlayers,
+        round: room.round,
+        isGameWide: true
+    };
+
     if (room.displaySocketId) {
-        io.to(room.displaySocketId).emit('show-round-scoreboard', {
-            players: sortedPlayers,
-            round: room.round,
-            isGameWide: true
-        });
+        io.to(room.displaySocketId).emit('show-round-scoreboard', scoreboardData);
     }
-    
-    // Schedule next round (this will be replaced with category management later)
+
+    // Also send to all connected players
+    room.players.forEach(player => {
+        if (player.isConnected && player.socketId) {
+            io.to(player.socketId).emit('show-round-scoreboard', scoreboardData);
+        }
+    });
+
+    // Schedule next round
     setTimeout(() => prepareNextRound(room), room.timerSettings.scoreboard * 1000);
 }
 
@@ -1019,7 +1008,7 @@ async function restartGame(room) {
     });
     
     // Create a new game record for the restart (this is the key change)
-    room.dbGameId = await logGameRestart(room.code, room.gmSocketId);
+    room.dbGameId = await logGameRestart(room.code, room.hostSocketId);
     await initializePresetCategories(room.dbGameId);
     
     try {
@@ -1129,20 +1118,58 @@ function initializeDatabase() {
 
     // Execute each statement separately
     db.exec(schemaSQL, (err) => {
-            if (err) reject(err);
-            else resolve();
+            if (err) {
+                reject(err);
+                return;
+            }
+            // Run migrations after schema creation
+            runMigrations().then(resolve).catch(reject);
         });
     });
 }
 
-// Initialize database on startup
-initializeDatabase();
+// Database migrations for schema updates
+function runMigrations() {
+    return new Promise((resolve, reject) => {
+        // Check if session_number column exists in games table
+        db.all("PRAGMA table_info(games)", (err, columns) => {
+            if (err) {
+                // If table doesn't exist yet, that's fine - schema creation will handle it
+                resolve();
+                return;
+            }
+            
+            const hasSessionNumber = columns.some(col => col.name === 'session_number');
+            
+            if (!hasSessionNumber) {
+                console.log('Migrating database: Adding session_number column to games table...');
+                db.run("ALTER TABLE games ADD COLUMN session_number INTEGER DEFAULT 1", (err) => {
+                    if (err) {
+                        // If column already exists or other error, log but don't fail
+                        if (err.message && err.message.includes('duplicate column')) {
+                            console.log('Column already exists, skipping migration');
+                            resolve();
+                        } else {
+                            console.error('Migration error:', err);
+                            reject(err);
+                        }
+                    } else {
+                        console.log('Migration complete: session_number column added');
+                        resolve();
+                    }
+                });
+            } else {
+                resolve();
+            }
+        });
+    });
+}
 
 // Database helper functions
-function logGameCreated(roomCode, gmSocketId) {
+function logGameCreated(roomCode, hostSocketId) {
     return new Promise((resolve, reject) => {
         const stmt = db.prepare(`INSERT INTO games (room_code, session_number, gm_id, started_at, status) VALUES (?, ?, ?, ?, ?)`);
-        stmt.run(roomCode, 1, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
+        stmt.run(roomCode, 1, hostSocketId, new Date().toISOString(), 'waiting', function(err) {
             if (err) {
                 console.error('DB Error creating game:', err);
                 reject(err);
@@ -1218,7 +1245,7 @@ function logVote(submissionId, voterPlayerId, vote) {
     });
 }
 
-function logGameRestart(roomCode, gmSocketId) {
+function logGameRestart(roomCode, hostSocketId) {
     return new Promise((resolve, reject) => {
         // First, find the highest session number for this room
         db.get(
@@ -1239,7 +1266,7 @@ function logGameRestart(roomCode, gmSocketId) {
                     VALUES (?, ?, ?, ?, ?)
                 `);
                 
-                stmt.run(roomCode, sessionNumber, gmSocketId, new Date().toISOString(), 'waiting', function(err) {
+                stmt.run(roomCode, sessionNumber, hostSocketId, new Date().toISOString(), 'waiting', function(err) {
                     if (err) {
                         console.error('DB Error creating restart game:', err);
                         reject(err);
@@ -1410,7 +1437,7 @@ io.on('connection', (socket) => {
         } while (rooms.has(roomCode));
 
         const room = createRoom(roomCode);
-        room.gmSocketId = socket.id;
+        room.hostSocketId = socket.id;
 
         room.dbGameId = await logGameCreated(roomCode, socket.id);
         
@@ -1420,10 +1447,63 @@ io.on('connection', (socket) => {
         
         socket.join(roomCode);
         socket.emit('room-created', { roomCode });
-        
+
         console.log(`Room ${roomCode} created by host ${socket.id}`);
     });
-    
+
+    // A player creates a room directly (hostless mode) — they join as both creator and player
+    socket.on('create-room-as-player', async (data) => {
+        const { nickname } = data;
+
+        if (!nickname || nickname.trim().length === 0) {
+            socket.emit('join-error', { message: 'Nickname required' });
+            return;
+        }
+
+        let roomCode;
+        do {
+            roomCode = generateRoomCode();
+        } while (rooms.has(roomCode));
+
+        const room = createRoom(roomCode);
+        room.dbGameId = await logGameCreated(roomCode, socket.id);
+        await initializePresetCategories(room.dbGameId);
+        rooms.set(roomCode, room);
+
+        // Register as a player
+        const playerId = uuidv4();
+        const dbPlayerId = await logPlayerJoined(playerId, socket.id, nickname.trim(), room.dbGameId);
+
+        room.players.set(playerId, {
+            playerId,
+            dbPlayerId,
+            socketId: socket.id,
+            nickname: nickname.trim(),
+            score: 0,
+            hasSubmitted: false,
+            hasVoted: false,
+            isConnected: true
+        });
+
+        room.creatorPlayerId = playerId;
+        room.originalCreatorPlayerId = playerId;
+
+        updateSocketMapping(socket.id, roomCode, playerId);
+        socket.join(roomCode);
+
+        // Save data to send back
+        socket.emit('join-success', {
+            roomCode,
+            playerId,
+            nickname: nickname.trim(),
+            isCreator: true
+        });
+
+        broadcastGameState(room);
+
+        console.log(`Room ${roomCode} created by player ${nickname} (hostless mode)`);
+    });
+
         // Player joins room
     socket.on('join-room', async (data) => {
         const { roomCode, nickname } = data;
@@ -1439,11 +1519,20 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Check if nickname already taken
+        // Check if there's a disconnected player with the same nickname — if so, treat as reconnect
+        const disconnectedMatch = Array.from(room.players.values())
+            .find(p => !p.isConnected && p.nickname.toLowerCase() === nickname.trim().toLowerCase());
+        if (disconnectedMatch) {
+            console.log(`Player ${nickname} rejoining via nickname match in room ${roomCode}`);
+            await handlePlayerReconnection(socket, roomCode, disconnectedMatch.playerId);
+            return;
+        }
+
+        // Check if nickname already taken by an active player
         const existingNicknames = Array.from(room.players.values())
             .filter(p => p.isConnected)
             .map(p => p.nickname.toLowerCase());
-        if (existingNicknames.includes(nickname.toLowerCase())) {
+        if (existingNicknames.includes(nickname.trim().toLowerCase())) {
             socket.emit('join-error', { message: 'Nickname already taken' });
             return;
         }
@@ -1538,7 +1627,13 @@ io.on('connection', (socket) => {
             
             // Send confirmation to submitter
             socket.emit('category-submitted', { category: cleanCategory });
-            
+
+            // Broadcast the new submission to all players in the room for the live feed
+            io.to(mapping.roomCode).emit('category-added', {
+                nickname: player.nickname,
+                category: cleanCategory
+            });
+
             // FIXED: Always send to display AND broadcast room update
             if (room.displaySocketId) {
                 io.to(room.displaySocketId).emit('categories-update', {
@@ -1564,8 +1659,17 @@ io.on('connection', (socket) => {
     socket.on('host-add-category', async (data) => {
         const { category } = data;
         const room = findRoomBySocketId(socket.id);
-        
-        
+
+        if (!room) {
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
+
+        if (!isHostAuthorized(room, socket.id)) {
+            socket.emit('error', { message: 'Only host can add categories' });
+            return;
+        }
+
         if (!category || category.trim().length === 0) {
             socket.emit('error', { message: 'Category cannot be empty' });
             return;
@@ -1605,13 +1709,17 @@ io.on('connection', (socket) => {
             socket.emit('error', { message: 'Room not found' });
             return;
         }
-        
-        
+
+        if (!isHostAuthorized(room, socket.id)) {
+            socket.emit('error', { message: 'Only host can start the game' });
+            return;
+        }
+
         if (room.players.size < 2) {
             socket.emit('error', { message: 'Need at least 2 players to start' });
             return;
         }
-        
+
         // Start first round
         room.round = 1;
         const firstCategory = await selectNextCategory(room);
@@ -1643,8 +1751,8 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Verify this is the host/GM or display
-        if (room.gmSocketId !== socket.id && room.displaySocketId !== socket.id) {
+        // Verify this is the host, display, or room creator
+        if (!isHostAuthorized(room, socket.id)) {
             console.error(`Unauthorized max-rounds request from socket ${socket.id}`);
             socket.emit('error', { message: 'Only host can set max rounds' });
             return;
@@ -1681,13 +1789,18 @@ io.on('connection', (socket) => {
             socket.emit('error', { message: 'Room not found' });
             return;
         }
-        
+
+        if (!isHostAuthorized(room, socket.id)) {
+            socket.emit('error', { message: 'Only host can restart the game' });
+            return;
+        }
+
         console.log('Room state:', room.gameState);
         if (room.gameState !== 'game-complete') {
             socket.emit('error', { message: 'Can only restart completed games' });
             return;
         }
-        
+
         await restartGame(room);
     });
 
@@ -1827,12 +1940,9 @@ io.on('connection', (socket) => {
 
             player.hasVoted = true;
 
-            // Single broadcast handles all updates
-            try {
-                broadcastGameState(room);
-            } catch (error) {
-                console.error('Error broadcasting game state:', error);
-            }
+            // FIXED: Only send vote count updates, not full game state
+            // This prevents rebuilding the voting interface for players who haven't voted yet
+            broadcastVoteCountUpdate(room);
             
             // Check for early completion
             checkVotingComplete(room);
@@ -1845,9 +1955,20 @@ io.on('connection', (socket) => {
     });
 
 
-    // GM ends game
+    // Host/Display ends game
     socket.on('end-game', async () => {
         const room = findRoomBySocketId(socket.id);
+        
+        if (!room) {
+            socket.emit('error', { message: 'Room not found' });
+            return;
+        }
+        
+        // Verify this is the host or display
+        if (room.hostSocketId !== socket.id && room.displaySocketId !== socket.id) {
+            socket.emit('error', { message: 'Only host can end the game' });
+            return;
+        }
 
         room.gameState = 'ended';
         await updateGameStatus(room.code, 'completed', room.round);
@@ -1948,23 +2069,30 @@ io.on('connection', (socket) => {
             return;
         }
 
-        if (room.gmSocketId === socket.id) {
-            // GM disconnected
-            room.gmSocketId = null;
+        if (room.hostSocketId === socket.id) {
+            // Host/display screen disconnected — notify players to show reconnecting overlay
+            room.hostSocketId = null;
             room.players.forEach(player => {
                 if (player.isConnected && player.socketId) {
-                    io.to(player.socketId).emit('host-disconnected');
+                    io.to(player.socketId).emit('host-reconnecting');
                 }
             });
-            // Grace period before cleanup
+            // Give the host 5 minutes to reconnect before ending the session
+            const HOST_GRACE_MS = 5 * 60 * 1000;
             setTimeout(() => {
-                if (rooms.has(mapping.roomCode) && !room.gmSocketId) {
+                if (rooms.has(mapping.roomCode) && !room.hostSocketId) {
+                    // Host never came back — notify players the session has ended
+                    room.players.forEach(player => {
+                        if (player.isConnected && player.socketId) {
+                            io.to(player.socketId).emit('host-disconnected');
+                        }
+                    });
                     rooms.delete(mapping.roomCode);
-                    console.log(`Room ${mapping.roomCode} deleted after GM grace period`);
+                    console.log(`Room ${mapping.roomCode} deleted after host grace period`);
                 }
-            }, 200000); // 5 minutes
-            
-            console.log(`GM disconnected from room ${mapping.roomCode}`);
+            }, HOST_GRACE_MS);
+
+            console.log(`Host disconnected from room ${mapping.roomCode}`);
 
          } else if (room.displaySocketId === socket.id) {
             room.displaySocketId = null;
@@ -1983,34 +2111,79 @@ io.on('connection', (socket) => {
                     console.error('Error updating player connection status:', error);
                 }
 
-                // Broadcast disconnection
+                // Notify peers of disconnect
+                broadcastPlayerStatus(room, player.nickname, 'disconnected');
+
+                // Broadcast updated game state to remaining players
                 try {
                     broadcastGameState(room);
                 } catch (error) {
                     console.error('Error broadcasting game state:', error);
                 }
 
+                // Re-check completion in case all remaining players already submitted/voted
+                if (room.gameState === 'submitting') {
+                    checkSubmissionComplete(room);
+                } else if (room.gameState === 'voting') {
+                    checkVotingComplete(room);
+                }
+
                 console.log(`Player ${player.nickname} disconnected from room ${mapping.roomCode}`);
 
-                // Extended grace period for players
+                // If the disconnected player was the creator, schedule role reassignment
+                if (room.creatorPlayerId === mapping.playerId) {
+                    const CREATOR_GRACE_MS = 30 * 1000;
+                    setTimeout(() => {
+                        // Only promote if the creator is still absent
+                        const maybeReturned = room.players.get(mapping.playerId);
+                        if (maybeReturned && maybeReturned.isConnected) return;
+
+                        // Pick the earliest-joined connected player (Map insertion order)
+                        const nextEntry = Array.from(room.players.entries())
+                            .find(([id, p]) => p.isConnected && p.socketId && id !== mapping.playerId);
+                        if (!nextEntry) return;
+
+                        const [newCreatorId, newCreatorPlayer] = nextEntry;
+                        room.creatorPlayerId = newCreatorId;
+                        io.to(newCreatorPlayer.socketId).emit('creator-promoted');
+                        broadcastGameState(room);
+                        console.log(`Creator role promoted to ${newCreatorPlayer.nickname} in room ${mapping.roomCode}`);
+                    }, CREATOR_GRACE_MS);
+                }
+
+                // After 5 minutes, permanently remove the ghost slot and re-check completion
+                const PLAYER_GRACE_MS = 5 * 60 * 1000;
                 setTimeout(() => {
                     const currentPlayer = room.players.get(mapping.playerId);
                     if (currentPlayer && !currentPlayer.isConnected) {
-                        // Could remove player here if desired
-                        console.log(`Player ${player.nickname} still disconnected after grace period`);
+                        room.players.delete(mapping.playerId);
+                        console.log(`Player ${player.nickname} removed after grace period in room ${mapping.roomCode}`);
+                        // Re-check completion now that the ghost slot is gone
+                        if (room.gameState === 'submitting') {
+                            checkSubmissionComplete(room);
+                        } else if (room.gameState === 'voting') {
+                            checkVotingComplete(room);
+                        }
                     }
-                }, 600000); // 10 minutes
+                }, PLAYER_GRACE_MS);
             }
         }
         removeSocketMapping(socket.id);
     });
 });
 
-// Start server
+// Start server after database is initialized
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Open http://localhost:${PORT} to start`);
+
+// Wait for database initialization before starting server
+initializeDatabaseWithStorage().then(() => {
+    server.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        console.log(`Open http://localhost:${PORT} to start`);
+    });
+}).catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
 });
 
 app.get('/export/csv', (req, res) => {

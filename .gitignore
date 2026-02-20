@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Database
+game_data.db
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+
+# Environment
+.env

@@ -304,9 +304,10 @@
             display: flex;
             justify-content: space-between;
             padding: 0.5rem;
-            background: rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.04);
             margin: 0.2rem 0;
             border-radius: 8px;
+            color: #333;
         }
 
         .player-score-status {
@@ -464,30 +465,116 @@
         .hidden {
             display: none;
         }
+
+        /* Category live feed */
+        @keyframes feedSlideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .category-feed-item {
+            animation: feedSlideIn 0.3s ease;
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+            padding: 0.3rem 0;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            font-size: 0.85rem;
+        }
+
+        .feed-nickname {
+            font-weight: 700;
+            color: #667eea;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .feed-category {
+            color: #444;
+            font-style: italic;
+        }
+
+        /* Full-screen reconnection overlays */
+        .reconnect-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            text-align: center;
+            padding: 2rem;
+        }
+        .reconnect-overlay.visible {
+            display: flex;
+        }
+        .reconnect-overlay h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .reconnect-overlay p {
+            opacity: 0.8;
+            margin-bottom: 1.5rem;
+        }
+        .reconnect-overlay button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            background: #fff;
+            color: #333;
+            font-size: 1rem;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+    <!-- Overlay shown when this player's socket is reconnecting -->
+    <div class="reconnect-overlay" id="reconnectOverlay">
+        <h2>Reconnecting...</h2>
+        <p>Hang tight, trying to get you back in the game.</p>
+        <button id="retryBtn">Retry Now</button>
+    </div>
+
+    <!-- Overlay shown when the host/display screen disconnects -->
+    <div class="reconnect-overlay" id="hostReconnectingOverlay">
+        <h2>Host screen disconnected</h2>
+        <p>Waiting for the host to reconnect... The game is still running.</p>
+    </div>
+
     <div class="connection-status connected" id="connectionStatus">Connected</div>
     <div class="container">
         <!-- Join Form -->
         <div id="joinForm">
             <div class="card">
-                <h1>🎯 Join Game</h1>
-                
-                <div class="form-group">
-                    <label for="roomCodeInput">Room Code</label>
-                    <input type="text" id="roomCodeInput" placeholder="Enter 4-letter code" maxlength="4" style="text-transform: uppercase;">
-                    <div id="roomCodeError" class="error hidden"></div>
-                </div>
+                <h1>🎯 Split the Room</h1>
 
-                <div class="form-group">
-                    <label for="nicknameInput">Your Nickname</label>
-                    <input type="text" id="nicknameInput" placeholder="Enter your nickname" maxlength="20">
-                    <div id="nicknameError" class="error hidden"></div>
-                </div>
+                <div id="joinSection">
+                    <!-- Shared nickname -->
+                    <div class="form-group">
+                        <label for="nicknameInput">Your Nickname</label>
+                        <input type="text" id="nicknameInput" placeholder="Enter your nickname" maxlength="20">
+                        <div id="nicknameError" class="error hidden"></div>
+                    </div>
 
-                <button id="joinBtn" class="button">Join Game</button>
-                <div id="joinError" class="error hidden"></div>
+                    <!-- Start a new game (primary) -->
+                    <button id="createRoomBtn" class="button">Start New Game</button>
+                    <div id="createError" class="error hidden"></div>
+
+                    <div style="margin: 1.25rem 0; text-align: center; color: rgba(255,255,255,0.7);">— or join an existing game —</div>
+
+                    <!-- Join an existing room -->
+                    <div class="form-group">
+                        <label for="roomCodeInput">Room Code</label>
+                        <input type="text" id="roomCodeInput" placeholder="Enter 4-letter code" maxlength="4" style="text-transform: uppercase;">
+                        <div id="roomCodeError" class="error hidden"></div>
+                    </div>
+
+                    <button id="joinBtn" class="button" style="background: transparent; border: 2px solid #667eea; color: #667eea;">Join Game</button>
+                    <div id="joinError" class="error hidden"></div>
+                </div>
             </div>
         </div>
 
@@ -510,7 +597,10 @@
                     <div class="early-completion-message hidden" id="earlyCompletionMsg">
                         Waiting for other players...
                     </div>
-                </div>   
+                </div>
+                <div style="text-align: center; margin-top: 0.75rem;">
+                    <button id="leaveGameBtn" style="background: none; border: none; color: rgba(255,255,255,0.55); font-size: 0.8rem; cursor: pointer; padding: 0.25rem 0.5rem; text-decoration: underline;">Leave game</button>
+                </div>
             </div>
 
             <!-- Game phases -->
@@ -556,9 +646,19 @@
 
             <!-- Lobby Phase -->
             <div id="lobbyPhase" class="game-content hidden">
-                <div class="category-display">Lobby Phase</div>
-                <p>Waiting for the game to start...</p>
-                
+                <div class="category-display">Lobby</div>
+
+                <!-- Creator-only controls (hidden for regular players) -->
+                <div id="creatorControls" class="hidden" style="background: rgba(0,0,0,0.05); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                        <label style="color:#555; font-size:0.85rem; white-space: nowrap;">Rounds</label>
+                        <input type="number" id="hostMaxRoundsInput" min="1" max="20" value="10" style="width: 60px; padding: 0.4rem; border-radius: 6px; border: none; text-align: center;">
+                        <button id="hostSetRoundsBtn" class="button" style="padding: 0.4rem 0.75rem; font-size: 0.85rem; width: auto;">Set</button>
+                    </div>
+                    <button id="hostStartGameBtn" class="button" disabled style="width: 100%; background: #4caf50;">Start Game</button>
+                    <p id="hostStartMsg" style="font-size: 0.8rem; color: #777; margin-top: 0.4rem; text-align: center;">Need at least 2 players to start</p>
+                </div>
+
                 <div class="lobby-category-section">
                     <h4>Submit Category Ideas</h4>
                     <p>Help build the category pool for this game!</p>
@@ -568,10 +668,41 @@
                         Category submitted! Thanks for contributing.
                     </div>
                 </div>
-                
+
                 <div class="lobby-info">
                     <p><span id="lobbyPlayerCount">0</span> players joined</p>
-                    <p class="waiting-message">Waiting for host to start the game...</p>
+                    <p class="waiting-message" id="lobbyWaitMsg">Waiting for host to start the game...</p>
+                    <div id="categoryFeed" style="margin-top: 0.75rem; max-height: 180px; overflow: hidden;"></div>
+                </div>
+            </div>
+
+            <!-- Results Phase (shown on player screens when results broadcast) -->
+            <div id="resultsPhase" class="game-content hidden">
+                <div id="exemplarResult" class="hidden" style="text-align: center; padding: 1rem;">
+                    <div style="font-size: 0.85rem; color: #888; margin-bottom: 0.5rem;">Exemplar result</div>
+                    <div id="resultExemplar" style="font-size: 1.4rem; font-weight: bold; margin-bottom: 0.5rem; color: #222;"></div>
+                    <div id="resultSubmitter" style="font-size: 0.85rem; color: #888; margin-bottom: 1rem;"></div>
+                    <div style="display: flex; gap: 1rem; justify-content: center;">
+                        <div style="background: #e8f5e9; border-radius: 8px; padding: 0.75rem 1.5rem; color: #2e7d32;">
+                            <div style="font-size: 1.5rem; font-weight: bold;" id="resultYes">0</div>
+                            <div style="font-size: 0.8rem;">YES</div>
+                        </div>
+                        <div style="background: #ffebee; border-radius: 8px; padding: 0.75rem 1.5rem; color: #c62828;">
+                            <div style="font-size: 1.5rem; font-weight: bold;" id="resultNo">0</div>
+                            <div style="font-size: 0.8rem;">NO</div>
+                        </div>
+                    </div>
+                    <div id="resultPoints" style="margin-top: 0.75rem; font-size: 1rem; color: #444;"></div>
+                </div>
+
+                <div id="summaryResult" class="hidden" style="padding: 0.5rem;">
+                    <h3 style="text-align: center; margin-bottom: 0.75rem;" id="summaryTitle">Results</h3>
+                    <div id="summaryList"></div>
+                </div>
+
+                <div id="scoreboardResult" class="hidden" style="padding: 0.5rem;">
+                    <h3 style="text-align: center; margin-bottom: 0.75rem;" id="scoreboardTitle">Scores</h3>
+                    <div id="scoreboardList"></div>
                 </div>
             </div>
         </div>
@@ -579,6 +710,16 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        // Escape HTML to prevent XSS when interpolating user content into innerHTML
+        function esc(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // Enhanced socket management with reconnection
         let socket = io({
             autoConnect: true,
@@ -605,6 +746,13 @@
         let mySubmission = '';
         let currentRound = 0;
         let currentPlayerScore = 0;
+        let currentGameState = null; // Track current game state to detect phase transitions
+        let isCreator = false; // Whether this player is the room creator (has host controls)
+
+        // Overlay elements
+        const reconnectOverlay = document.getElementById('reconnectOverlay');
+        const hostReconnectingOverlay = document.getElementById('hostReconnectingOverlay');
+        const retryBtn = document.getElementById('retryBtn');
 
         // DOM elements
         const connectionStatus = document.getElementById('connectionStatus');
@@ -626,6 +774,7 @@
         const votingPhase = document.getElementById('votingPhase');
         const waitingPhase = document.getElementById('waitingPhase');
         const lobbyPhase = document.getElementById('lobbyPhase');
+        const resultsPhase = document.getElementById('resultsPhase');
         const categoryDisplay = document.getElementById('categoryDisplay');
         const exemplarInput = document.getElementById('exemplarInput');
         const submitExemplarBtn = document.getElementById('submitExemplarBtn');
@@ -638,6 +787,7 @@
         const roomCodeError = document.getElementById('roomCodeError');
         const nicknameError = document.getElementById('nicknameError');
         const joinError = document.getElementById('joinError');
+        const createError = document.getElementById('createError');
 
         // Timer elements
         const playerTimer = document.getElementById('playerTimer');
@@ -645,13 +795,24 @@
         const playerTimerCountdown = document.getElementById('playerTimerCountdown');
         const playerTimerBar = document.getElementById('playerTimerBar');
         const earlyCompletionMsg = document.getElementById('earlyCompletionMsg');
-        
+
         // Lobby elements
         const categoryInput = document.getElementById('categoryInput');
         const submitCategoryBtn = document.getElementById('submitCategoryBtn');
         const categorySuccess = document.getElementById('categorySuccess');
         const lobbyPlayerCount = document.getElementById('lobbyPlayerCount');
+        const lobbyWaitMsg = document.getElementById('lobbyWaitMsg');
         const joinNewGameBtn = document.getElementById('joinNewGameBtn');
+
+        // Creator controls
+        const creatorControls = document.getElementById('creatorControls');
+        const hostMaxRoundsInput = document.getElementById('hostMaxRoundsInput');
+        const hostSetRoundsBtn = document.getElementById('hostSetRoundsBtn');
+        const hostStartGameBtn = document.getElementById('hostStartGameBtn');
+        const hostStartMsg = document.getElementById('hostStartMsg');
+
+        // Join/create form buttons
+        const createRoomBtn = document.getElementById('createRoomBtn');
         let playerTimerState = {
             remaining: 0,
             total: 0,
@@ -679,6 +840,12 @@
 
         // Enhanced page load handling with automatic reconnection
         window.addEventListener('load', () => {
+            // Auto-focus create section if routed here from "Player View" on landing page
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('create') === '1') {
+                nicknameInput.focus();
+            }
+
             const savedRoomCode = localStorage.getItem('roomCode');
             const savedPlayerId = localStorage.getItem('playerId');
             const savedNickname = localStorage.getItem('nickname');
@@ -689,7 +856,13 @@
                 connectionState.currentRoomCode = savedRoomCode;
                 connectionState.currentPlayerId = savedPlayerId;
                 connectionState.currentNickname = savedNickname;
-                
+
+                // Restore creator status if applicable
+                if (localStorage.getItem('isCreator') === 'true') {
+                    isCreator = true;
+                    creatorControls.classList.remove('hidden');
+                }
+
                 // Wait for socket connection before attempting reconnect
                 if (socket.connected) {
                     attemptReconnection();
@@ -699,51 +872,56 @@
             }
         });
 
-        joinNewGameBtn.addEventListener('click', () => {
-            if (confirm('Leave this game and join a new one?')) {
-                // Clear all saved game data
-                localStorage.removeItem('roomCode');
-                localStorage.removeItem('playerId');
-                localStorage.removeItem('nickname');
-                
-                // Reset connection state
-                connectionState = {
-                    isConnected: false,
-                    isReconnecting: false,
-                    currentRoomCode: null,
-                    currentPlayerId: null,
-                    currentNickname: null,
-                    gameState: null,
-                    reconnectAttempts: 0,
-                    maxReconnectAttempts: 10
-                };
-                
-                // Reset game state variables
-                hasSubmittedThisRound = false;
-                mySubmission = '';
-                currentRound = 0;
-                currentPlayerScore = 0;
-                
-                // Clear any socket mappings on server side
-                socket.emit('leave-game');
-                
-                // Reset timer
-                resetPlayerTimer();
-                
-                // Show join form
-                joinForm.style.display = 'block';
-                gameArea.style.display = 'none';
-                
-                // Clear form inputs
-                roomCodeInput.value = '';
-                nicknameInput.value = '';
-                
-                // Focus on room code input
-                roomCodeInput.focus();
-                
-                console.log('Player returned to join form for new game');
-            }
-        });
+        function leaveGame() {
+            const savedNickname = connectionState.currentNickname || '';
+            if (!confirm('Leave this game?\nYou can rejoin anytime using the same nickname.')) return;
+
+            // Clear all saved game data
+            localStorage.removeItem('roomCode');
+            localStorage.removeItem('playerId');
+            localStorage.removeItem('nickname');
+            localStorage.removeItem('isCreator');
+
+            // Reset connection state
+            connectionState = {
+                isConnected: false,
+                isReconnecting: false,
+                currentRoomCode: null,
+                currentPlayerId: null,
+                currentNickname: null,
+                gameState: null,
+                reconnectAttempts: 0,
+                maxReconnectAttempts: 10
+            };
+
+            // Reset game state variables
+            hasSubmittedThisRound = false;
+            mySubmission = '';
+            currentRound = 0;
+            currentPlayerScore = 0;
+            isCreator = false;
+            creatorControls.classList.add('hidden');
+
+            socket.emit('leave-game');
+            resetPlayerTimer();
+
+            // Return to join form
+            joinForm.style.display = 'block';
+            gameArea.style.display = 'none';
+
+            // Pre-fill nickname so they can easily rejoin
+            roomCodeInput.value = '';
+            nicknameInput.value = savedNickname;
+            createRoomBtn.disabled = false;
+            createRoomBtn.textContent = 'Start New Game';
+            joinBtn.disabled = false;
+            joinBtn.textContent = 'Join Game';
+
+            nicknameInput.focus();
+        }
+
+        document.getElementById('leaveGameBtn').addEventListener('click', leaveGame);
+        joinNewGameBtn.addEventListener('click', leaveGame);
 
         // Enhanced reconnection logic
         function attemptReconnection() {
@@ -784,6 +962,10 @@
             console.log('Socket disconnected:', reason);
             connectionState.isConnected = false;
             updateConnectionStatus('disconnected', `Disconnected: ${reason}`);
+            // Show full-screen overlay if we were in a game
+            if (connectionState.currentRoomCode) {
+                reconnectOverlay.classList.add('visible');
+            }
         });
 
         socket.on('reconnect_attempt', (attemptNumber) => {
@@ -793,35 +975,45 @@
 
         socket.on('reconnect_failed', () => {
             updateConnectionStatus('disconnected', 'Reconnection failed');
-            
-            // Clear saved data and return to join form
-            localStorage.removeItem('roomCode');
-            localStorage.removeItem('playerId');
-            localStorage.removeItem('nickname');
-            
-            joinForm.style.display = 'block';
-            gameArea.style.display = 'none';
-            
-            alert('Connection lost. Please rejoin the game.');
+            // Keep localStorage so the player can retry manually — do NOT wipe it
+            reconnectOverlay.classList.add('visible');
+            console.log('Auto-reconnect exhausted. Player can tap Retry to try again.');
+        });
+
+        // Manual retry button on the reconnect overlay
+        retryBtn.addEventListener('click', () => {
+            socket.connect();
         });
 
         // Enhanced join success handler
         socket.on('join-success', (data) => {
             console.log('Join successful:', data);
-            
+
             connectionState.currentRoomCode = data.roomCode;
             connectionState.currentPlayerId = data.playerId;
             connectionState.currentNickname = data.nickname;
 
-            // Save to localStorage for reconnection (including roomCode)
+            // Save to localStorage for reconnection
             localStorage.setItem('roomCode', data.roomCode);
             localStorage.setItem('playerId', data.playerId);
             localStorage.setItem('nickname', data.nickname);
 
-            // Update UI
+            // If this player is the creator, show host controls
+            if (data.isCreator) {
+                isCreator = true;
+                localStorage.setItem('isCreator', 'true');
+                creatorControls.classList.remove('hidden');
+                lobbyWaitMsg.textContent = 'You are the host. Start the game when ready!';
+            }
+
+            // Re-enable create button in case they navigated back
+            createRoomBtn.disabled = false;
+            createRoomBtn.textContent = 'Create Room';
+
             currentRoomCodeDisplay.textContent = data.roomCode;
             updateConnectionStatus('connected');
-            
+            reconnectOverlay.classList.remove('visible');
+
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
         });
@@ -829,29 +1021,46 @@
         // Enhanced reconnection success handler
         socket.on('reconnect-success', (data) => {
             console.log('Reconnection successful:', data);
-            
+
             connectionState.isReconnecting = false;
             connectionState.reconnectAttempts = 0;
+            connectionState.currentRoomCode = data.roomCode;
+            connectionState.currentPlayerId = data.playerId;
+            connectionState.currentNickname = data.nickname;
             connectionState.gameState = data.gameState;
-            
+
+            // Restore submission state if the server tells us what we submitted
+            if (data.mySubmission) {
+                hasSubmittedThisRound = true;
+                mySubmission = data.mySubmission;
+            }
+
+            // Always sync creator status from server (handles demotion edge cases)
+            isCreator = !!data.isCreator;
+            if (isCreator) {
+                localStorage.setItem('isCreator', 'true');
+                creatorControls.classList.remove('hidden');
+            } else {
+                localStorage.removeItem('isCreator');
+                creatorControls.classList.add('hidden');
+            }
+
             currentRoomCodeDisplay.textContent = data.roomCode;
             gameStatusDisplay.textContent = `Reconnected as ${data.nickname}`;
             updatePlayerScore(data.score);
-            
-            // Update round display
+
             if (data.round !== undefined && data.maxRounds !== undefined) {
                 updateRoundDisplay(data.round, data.maxRounds);
             }
-            
+
             updateConnectionStatus('connected');
-            
+            reconnectOverlay.classList.remove('visible');
+
             joinForm.style.display = 'none';
             gameArea.style.display = 'block';
 
             if (data.timerRemaining && data.timerPhase) {
-                setTimeout(() => {
-                    updatePlayerTimer(data.timerRemaining, data.timerPhase);
-                }, 100);
+                updatePlayerTimer(data.timerRemaining, data.timerPhase);
             }
 
             updateGamePhase(data.gameState, data);
@@ -860,12 +1069,15 @@
         socket.on('reconnect-error', (data) => {
             console.error('Reconnection failed:', data.message);
             connectionState.isReconnecting = false;
-            
+
             // Clear invalid data
             localStorage.removeItem('roomCode');
             localStorage.removeItem('playerId');
             localStorage.removeItem('nickname');
-            
+            localStorage.removeItem('isCreator');
+            isCreator = false;
+            creatorControls.classList.add('hidden');
+
             updateConnectionStatus('disconnected', 'Reconnection failed');
             joinForm.style.display = 'block';
             gameArea.style.display = 'none';
@@ -875,10 +1087,15 @@
             categoryInput.value = '';
             categorySuccess.classList.remove('hidden');
             categorySuccess.textContent = `"${data.category}" submitted! Thanks for contributing.`;
-            
+
             setTimeout(() => {
                 categorySuccess.classList.add('hidden');
             }, 3000);
+        });
+
+        // Live category feed — broadcast to all players in the room
+        socket.on('category-added', (data) => {
+            addCategoryFeedItem(data.nickname, data.category);
         });
 
         socket.on('timer-update', (data) => {
@@ -913,6 +1130,8 @@
         socket.on('game-state-update', (data) => {
             console.log('Game state update:', data);
             connectionState.gameState = data.gameState;
+            // If we were waiting for the host to reconnect, dismiss that overlay
+            hostReconnectingOverlay.classList.remove('visible');
             updateGamePhase(data.gameState, data);
             
             // Update player score if available
@@ -922,6 +1141,67 @@
                     updatePlayerScore(myPlayer.score);
                 }
             }
+        });
+
+        // Results events — show inline on player screen
+        socket.on('show-exemplar-result', (data) => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase].forEach(p => p.classList.add('hidden'));
+            resultsPhase.classList.remove('hidden');
+
+            // Hide summary/scoreboard, show exemplar result
+            document.getElementById('summaryResult').classList.add('hidden');
+            document.getElementById('scoreboardResult').classList.add('hidden');
+            const exemplarResult = document.getElementById('exemplarResult');
+            exemplarResult.classList.remove('hidden');
+
+            document.getElementById('resultExemplar').textContent = `"${data.exemplar}"`;
+            document.getElementById('resultSubmitter').textContent = `by ${data.submittedBy}`;
+            document.getElementById('resultYes').textContent = data.yesCount;
+            document.getElementById('resultNo').textContent = data.noCount;
+            const pts = data.points;
+            document.getElementById('resultPoints').textContent =
+                pts === 1 ? `${pts} point` : `${pts} points`;
+            gameStatusDisplay.textContent = `Result ${data.currentIndex + 1} of ${data.totalResults}`;
+        });
+
+        socket.on('show-enhanced-summary', (data) => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase].forEach(p => p.classList.add('hidden'));
+            resultsPhase.classList.remove('hidden');
+
+            document.getElementById('exemplarResult').classList.add('hidden');
+            document.getElementById('scoreboardResult').classList.add('hidden');
+            const summaryResult = document.getElementById('summaryResult');
+            summaryResult.classList.remove('hidden');
+
+            const items = data.showAll ? data.allResults : [...(data.topResults || []), ...(data.bottomResults || [])];
+            document.getElementById('summaryTitle').textContent = data.title || 'Results';
+            document.getElementById('summaryList').innerHTML = items.map((item, i) => `
+                <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.08); color:#333;">
+                    <span>${esc(item.exemplar)}</span>
+                    <span style="white-space:nowrap; margin-left:0.5rem; color:#666;">${item.yesCount}Y / ${item.noCount}N &nbsp; <strong style="color:#333;">${item.points}pt</strong></span>
+                </div>
+            `).join('');
+            gameStatusDisplay.textContent = 'Round summary';
+        });
+
+        socket.on('show-round-scoreboard', (data) => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase].forEach(p => p.classList.add('hidden'));
+            resultsPhase.classList.remove('hidden');
+
+            document.getElementById('exemplarResult').classList.add('hidden');
+            document.getElementById('summaryResult').classList.add('hidden');
+            const scoreboardResult = document.getElementById('scoreboardResult');
+            scoreboardResult.classList.remove('hidden');
+
+            document.getElementById('scoreboardTitle').textContent =
+                data.isGameWide ? `Scores after Round ${data.round}` : `Round ${data.round}`;
+            document.getElementById('scoreboardList').innerHTML = data.players.map((p, i) => `
+                <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.08); color:#333;">
+                    <span>${i + 1}. ${esc(p.nickname)}</span>
+                    <strong>${p.score} pts</strong>
+                </div>
+            `).join('');
+            gameStatusDisplay.textContent = 'Scoreboard';
         });
 
         socket.on('game-complete', (data) => {
@@ -945,9 +1225,54 @@
             showEarlyCompletion('submission');
         });
 
-        socket.on('gm-disconnected', () => {
-            alert('Game Master disconnected. The game has ended.');
-            location.reload();
+        function showToast(msg) {
+            if (gameArea.style.display === 'none') return;
+            const toast = document.createElement('div');
+            toast.textContent = msg;
+            toast.style.cssText = 'position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:0.5rem 1rem;border-radius:8px;z-index:500;font-size:0.85rem;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Show a brief peer notification when someone connects/disconnects
+        socket.on('player-status-update', (data) => {
+            const msg = data.status === 'reconnected'
+                ? `${data.nickname} reconnected`
+                : `${data.nickname} disconnected`;
+            console.log(msg);
+            showToast(msg);
+        });
+
+        socket.on('creator-promoted', () => {
+            isCreator = true;
+            localStorage.setItem('isCreator', 'true');
+            creatorControls.classList.remove('hidden');
+            showToast("You're now the host!");
+        });
+
+        socket.on('creator-demoted', () => {
+            isCreator = false;
+            localStorage.removeItem('isCreator');
+            creatorControls.classList.add('hidden');
+            showToast("Host returned to original player");
+        });
+
+        socket.on('host-reconnecting', () => {
+            hostReconnectingOverlay.classList.add('visible');
+        });
+
+        socket.on('host-disconnected', () => {
+            hostReconnectingOverlay.classList.remove('visible');
+            // Session ended — clear state and return to join form
+            localStorage.removeItem('roomCode');
+            localStorage.removeItem('playerId');
+            localStorage.removeItem('nickname');
+            localStorage.removeItem('isCreator');
+            isCreator = false;
+            creatorControls.classList.add('hidden');
+            gameArea.style.display = 'none';
+            joinForm.style.display = 'block';
+            alert('The host session ended. Please start a new game.');
         });
         
         submitCategoryBtn.addEventListener('click', () => {
@@ -980,38 +1305,47 @@
             const roomCode = roomCodeInput.value.trim();
             const nickname = nicknameInput.value.trim();
 
-            // Validation
-            if (!roomCode) {
-                showError(roomCodeError, 'Room code is required');
-                return;
-            }
-            if (roomCode.length !== 4) {
-                showError(roomCodeError, 'Room code must be 4 characters');
-                return;
-            }
-            if (!nickname) {
-                showError(nicknameError, 'Nickname is required');
-                return;
-            }
-            if (nickname.length > 20) {
-                showError(nicknameError, 'Nickname must be 20 characters or less');
-                return;
-            }
+            if (!roomCode) { showError(roomCodeError, 'Room code is required'); return; }
+            if (roomCode.length !== 4) { showError(roomCodeError, 'Room code must be 4 characters'); return; }
+            if (!nickname) { showError(nicknameError, 'Nickname is required'); return; }
+            if (nickname.length > 20) { showError(nicknameError, 'Nickname must be 20 characters or less'); return; }
 
-            // Disable button and attempt to join
             joinBtn.disabled = true;
             joinBtn.textContent = 'Joining...';
-            
             socket.emit('join-room', { roomCode, nickname });
-            currentNickname = nickname;
+        });
+
+        // Create room (hostless mode)
+        createRoomBtn.addEventListener('click', () => {
+            const nickname = nicknameInput.value.trim();
+            if (!nickname) { showError(nicknameError, 'Nickname is required'); return; }
+            if (nickname.length > 20) { showError(nicknameError, 'Nickname must be 20 characters or less'); return; }
+
+            createRoomBtn.disabled = true;
+            createRoomBtn.textContent = 'Creating...';
+            socket.emit('create-room-as-player', { nickname });
+        });
+
+        // Creator host controls
+        hostSetRoundsBtn.addEventListener('click', () => {
+            const maxRounds = parseInt(hostMaxRoundsInput.value);
+            if (isNaN(maxRounds) || maxRounds < 1 || maxRounds > 20) {
+                alert('Rounds must be between 1 and 20');
+                return;
+            }
+            socket.emit('set-max-rounds', { maxRounds });
+        });
+
+        hostStartGameBtn.addEventListener('click', () => {
+            socket.emit('start-lobby-game');
         });
 
         // Handle Enter key in inputs
-        roomCodeInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') nicknameInput.focus();
+        nicknameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') roomCodeInput.focus();
         });
 
-        nicknameInput.addEventListener('keypress', (e) => {
+        roomCodeInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') joinBtn.click();
         });
 
@@ -1092,6 +1426,30 @@
             }
         }
 
+        const MAX_FEED_ITEMS = 6;
+
+        function addCategoryFeedItem(nickname, category) {
+            const feed = document.getElementById('categoryFeed');
+            const item = document.createElement('div');
+            item.className = 'category-feed-item';
+            item.innerHTML = `<span class="feed-nickname">${esc(nickname)}</span><span class="feed-category">"${esc(category)}"</span>`;
+            feed.insertBefore(item, feed.firstChild);
+            while (feed.children.length > MAX_FEED_ITEMS) {
+                feed.removeChild(feed.lastChild);
+            }
+        }
+
+        function populateCategoryFeed(submissions) {
+            const feed = document.getElementById('categoryFeed');
+            feed.innerHTML = '';
+            submissions.slice(-MAX_FEED_ITEMS).reverse().forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'category-feed-item';
+                item.innerHTML = `<span class="feed-nickname">${esc(s.nickname)}</span><span class="feed-category">"${esc(s.category)}"</span>`;
+                feed.appendChild(item);
+            });
+        }
+
         function updateRoundDisplay(round, maxRounds) {
             if (roundDisplay) {
                 roundDisplay.textContent = `Round ${round} / ${maxRounds}`;
@@ -1109,7 +1467,7 @@
                 
                 return `
                     <div class="final-result-item">
-                        <span>${medal}${player.nickname}</span>
+                        <span>${medal}${esc(player.nickname)}</span>
                         <span>${player.score} pts</span>
                     </div>
                 `;
@@ -1194,6 +1552,10 @@
         }
 
         function updateGamePhase(gameState, data) {
+            // Track phase transitions
+            const previousGameState = currentGameState;
+            currentGameState = gameState;
+            
             if (gameState !== playerTimerState.phase) {
                 resetPlayerTimer();
             }
@@ -1219,7 +1581,7 @@
                 }
             }
             
-            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase].forEach(phase => {
+            [submissionPhase, votingPhase, waitingPhase, lobbyPhase, gameCompletePhase, resultsPhase].forEach(phase => {
                 phase.classList.add('hidden');
             });
 
@@ -1228,12 +1590,26 @@
                     gameStatusDisplay.textContent = 'Submit category ideas';
                     lobbyPhase.classList.remove('hidden');
                     if (data.players) {
-                        lobbyPlayerCount.textContent = data.players.length;
+                        const playerCount = data.players.filter(p => p.isConnected).length;
+                        lobbyPlayerCount.textContent = playerCount;
+                        // Update creator start button based on player count
+                        if (isCreator) {
+                            const canStart = playerCount >= 2;
+                            hostStartGameBtn.disabled = !canStart;
+                            hostStartMsg.textContent = canStart
+                                ? 'Ready to start!'
+                                : `Need at least 2 players (${playerCount} joined)`;
+                        }
+                    }
+                    // Only populate from state when the feed is empty (fresh join/reconnect).
+                    // After that, category-added events keep it live without resetting other players.
+                    if (data.categorySubmissions && document.getElementById('categoryFeed').children.length === 0) {
+                        populateCategoryFeed(data.categorySubmissions);
                     }
                     categoryInput.focus();
                     resetPlayerTimer();
                     break;
-                    
+
                 case 'submitting':
                     gameStatusDisplay.textContent = 'Submit an exemplar';
                     categoryDisplay.textContent = `"${data.currentCategory}"`;
@@ -1259,9 +1635,66 @@
                         votingCategoryPlayer.textContent = `Category: "${data.currentCategory}"`;
                     }
                     
+                    // Check if player has already voted
+                    let hasVoted = false;
+                    if (data.players) {
+                        const myPlayer = data.players.find(p => p.nickname === connectionState.currentNickname);
+                        if (myPlayer && myPlayer.hasVoted) {
+                            hasVoted = true;
+                        }
+                    }
+                    
+                    // Only rebuild voting interface if:
+                    // 1. We're transitioning INTO the voting phase (not already in it)
+                    // 2. There are no existing voting items
+                    // 3. The round has changed
+                    const isTransitioningToVoting = previousGameState !== 'voting';
                     const existingVotingItems = document.querySelectorAll('.voting-item');
-                    if (existingVotingItems.length === 0 || data.round !== currentRound) {
+                    const roundChanged = data.round !== undefined && data.round !== currentRound;
+                    
+                    if (isTransitioningToVoting || existingVotingItems.length === 0 || roundChanged) {
+                        // Update currentRound when entering voting phase
+                        if (data.round !== undefined) {
+                            currentRound = data.round;
+                        }
+                        
+                        // Preserve existing vote selections before rebuilding
+                        const existingVotes = {};
+                        if (!isTransitioningToVoting && existingVotingItems.length > 0) {
+                            existingVotingItems.forEach(item => {
+                                const exemplarId = item.dataset.exemplarId;
+                                const selectedButton = item.querySelector('.vote-button.selected');
+                                if (selectedButton) {
+                                    existingVotes[exemplarId] = selectedButton.dataset.vote === 'yes';
+                                }
+                            });
+                        }
+                        
                         createVotingInterface(data.submissions);
+                        
+                        // Restore preserved votes if we had them
+                        if (Object.keys(existingVotes).length > 0) {
+                            Object.entries(existingVotes).forEach(([exemplarId, vote]) => {
+                                const item = document.querySelector(`.voting-item[data-exemplar-id="${exemplarId}"]`);
+                                if (item) {
+                                    const button = item.querySelector(`.vote-button[data-vote="${vote ? 'yes' : 'no'}"]`);
+                                    if (button) {
+                                        button.click();
+                                    }
+                                }
+                            });
+                        }
+                        
+                        // If player has already voted, disable the interface
+                        if (hasVoted) {
+                            submitVotesBtn.disabled = true;
+                            submitVotesBtn.textContent = 'Votes Submitted!';
+                            document.querySelectorAll('.vote-button').forEach(btn => {
+                                btn.disabled = true;
+                                btn.style.opacity = '0.6';
+                            });
+                            showEarlyCompletion('voting');
+                        }
                     }
                     break;
                     
@@ -1305,7 +1738,7 @@
         function createVotingInterface(submissions) {
             votingList.innerHTML = submissions.map((submission, index) => `
                 <div class="voting-item" data-exemplar-id="${index}">
-                    <div class="voting-exemplar">"${submission.exemplar}"</div>
+                    <div class="voting-exemplar">"${esc(submission.exemplar)}"</div>
                     <div class="vote-buttons">
                         <button class="vote-button yes" data-vote="yes" onclick="selectVote(this)">
                             👍 Yes

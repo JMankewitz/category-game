@@ -1296,6 +1296,13 @@
                         <input type="number" id="maxRoundsInput" class="rounds-input" value="10" min="1" max="50">
                         <button id="updateRoundsBtn" class="compact-button">Update</button>
                     </div>
+                    <div class="control-row" style="flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+                        <label class="control-label-compact" style="text-align: left;">Add Category:</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="hostCategoryInput" class="host-input" placeholder="e.g., 'furniture'" maxlength="50">
+                            <button id="addCategoryBtn" class="compact-button">Add</button>
+                        </div>
+                    </div>
                     <button id="startGameBtn" class="start-game-button-compact">
                         Start Game (Need 2+ players)
                     </button>
@@ -1331,6 +1338,15 @@
             <div class="category-display" id="categoryText">"Furniture"</div>
             <div class="phase-message" id="phaseMessage">Players are submitting exemplars...</div>
             <div class="submission-counter" id="submissionCounter">0 / 8 players have submitted</div>
+            
+            <!-- Host controls for adding categories when waiting -->
+            <div id="waitingCategoryControls" class="host-controls hidden" style="position: relative; margin-top: 2rem; transform: none; left: auto;">
+                <h3 class="host-section">Add Category to Continue</h3>
+                <div class="control-group">
+                    <input type="text" id="waitingCategoryInput" class="host-input" placeholder="Enter a category..." maxlength="50">
+                    <button id="addWaitingCategoryBtn" class="host-button">Add Category</button>
+                </div>
+            </div>
         </div>
 
         <!-- Voting counter -->
@@ -1402,6 +1418,16 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        // Escape HTML to prevent XSS when interpolating user content into innerHTML
+        function esc(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         const socket = io({
             autoConnect: true,
             reconnection: true,
@@ -1462,6 +1488,11 @@
         const updateRoundsBtn = document.getElementById('updateRoundsBtn');
         const restartGameBtn = document.getElementById('restartGameBtn');
         const gameCompleteActions = document.getElementById('gameCompleteActions');
+        const hostCategoryInput = document.getElementById('hostCategoryInput');
+        const addCategoryBtn = document.getElementById('addCategoryBtn');
+        const waitingCategoryControls = document.getElementById('waitingCategoryControls');
+        const waitingCategoryInput = document.getElementById('waitingCategoryInput');
+        const addWaitingCategoryBtn = document.getElementById('addWaitingCategoryBtn');
 
         let currentMaxRounds = 10; // NEW: Track max rounds
 
@@ -1493,6 +1524,49 @@
 
         maxRoundsInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') updateRoundsBtn.click();
+        });
+
+        // Add category handler
+        addCategoryBtn.addEventListener('click', () => {
+            const category = hostCategoryInput.value.trim();
+            if (!category) {
+                alert('Please enter a category');
+                return;
+            }
+            if (category.length > 50) {
+                alert('Category must be 50 characters or less');
+                return;
+            }
+            socket.emit('host-add-category', { category });
+            hostCategoryInput.value = '';
+        });
+
+        hostCategoryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addCategoryBtn.click();
+        });
+
+        socket.on('category-added', (data) => {
+            console.log('Category added:', data.category);
+            // The categories-update event will handle updating the display
+        });
+
+        // Add category handler for waiting state
+        addWaitingCategoryBtn.addEventListener('click', () => {
+            const category = waitingCategoryInput.value.trim();
+            if (!category) {
+                alert('Please enter a category');
+                return;
+            }
+            if (category.length > 50) {
+                alert('Category must be 50 characters or less');
+                return;
+            }
+            socket.emit('host-add-category', { category });
+            waitingCategoryInput.value = '';
+        });
+
+        waitingCategoryInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addWaitingCategoryBtn.click();
         });
 
         // Start game from lobby
@@ -1795,6 +1869,7 @@
                     phaseMessage.textContent = 'Host can add categories using the controls below';
                     submissionCounter.style.display = 'none';
                     timerDisplay.classList.add('hidden');
+                    waitingCategoryControls.classList.remove('hidden');
                     break;
                     
                 case 'submitting':
@@ -1802,6 +1877,7 @@
                     categoryScreen.classList.remove('hidden');
                     phaseMessage.textContent = 'Players are submitting exemplars...';
                     submissionCounter.style.display = 'block';
+                    waitingCategoryControls.classList.add('hidden');
                     break;
                     
                 case 'voting':
@@ -2006,7 +2082,7 @@
                 mostControversialList.innerHTML = data.allResults.map((item, index) => `
                     <div class="controversy-item" style="animation-delay: ${index * 0.1}s">
                         <div class="controversy-rank">#${index + 1}</div>
-                        <div class="controversy-exemplar">"${item.exemplar}"</div>
+                        <div class="controversy-exemplar">"${esc(item.exemplar)}"</div>
                         <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
                         <div class="controversy-points">${item.points} points</div>
                     </div>
@@ -2023,7 +2099,7 @@
                 mostControversialList.innerHTML = data.topResults.map((item, index) => `
                     <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
                         <div class="controversy-rank">#${index + 1}</div>
-                        <div class="controversy-exemplar">"${item.exemplar}"</div>
+                        <div class="controversy-exemplar">"${esc(item.exemplar)}"</div>
                         <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
                         <div class="controversy-points">${item.points} points</div>
                     </div>
@@ -2036,7 +2112,7 @@
                     return `
                         <div class="controversy-item" style="animation-delay: ${index * 0.2}s">
                             <div class="controversy-rank">#${actualRank}</div>
-                            <div class="controversy-exemplar">"${item.exemplar}"</div>
+                            <div class="controversy-exemplar">"${esc(item.exemplar)}"</div>
                             <div class="controversy-split">${item.yesCount} YES, ${item.noCount} NO</div>
                             <div class="controversy-points">${item.points} points</div>
                         </div>
@@ -2073,7 +2149,7 @@
                     <div class="score-item slide-in ${data.isFinal ? 'final-score' : ''}" style="animation-delay: ${index * 0.1}s">
                         <div>
                             <span class="score-rank">${rankEmoji}#${index + 1}</span>
-                            ${player.nickname}
+                            ${esc(player.nickname)}
                         </div>
                         <div>${player.score} points</div>
                     </div>
