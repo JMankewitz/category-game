@@ -42,9 +42,9 @@
         }
 
         .game-title {
-            font-size: 4rem;
+            font-size: clamp(2.5rem, 4vw, 4rem);
             font-weight: 800;
-            margin-bottom: 2rem;
+            margin-bottom: clamp(0.75rem, 2vh, 2rem);
             text-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
 
@@ -304,11 +304,11 @@
         }
 
         .room-code-featured {
-            font-size: 4rem;
+            font-size: clamp(3rem, 7vw, 6rem);
             font-weight: 900;
             color: #667eea;
             letter-spacing: 0.3em;
-            margin: 1rem 0;
+            margin: 0.5rem 0;
             text-shadow: 0 2px 4px rgba(0,0,0,0.1);
             font-family: 'Courier New', monospace;
         }
@@ -417,36 +417,36 @@
         }
 
         .category-display {
-            font-size: 6rem;
+            font-size: clamp(3rem, 5vw, 6rem);
             font-weight: 700;
-            margin: 2rem 0;
+            margin: 1rem 0;
             text-shadow: 0 4px 8px rgba(0,0,0,0.3);
             line-height: 1.2;
         }
 
         .phase-message {
-            font-size: 2.5rem;
-            margin: 2rem 0;
+            font-size: clamp(1.4rem, 2.2vw, 2.5rem);
+            margin: 1rem 0;
             opacity: 0.9;
         }
 
         .submission-counter {
-            font-size: 1.8rem;
+            font-size: clamp(1.1rem, 1.8vw, 1.8rem);
             font-weight: 600;
             background: rgba(255,255,255,0.2);
-            padding: 1rem 2rem;
+            padding: clamp(0.5rem, 1vh, 1rem) clamp(1rem, 2vw, 2rem);
             border-radius: 15px;
-            margin: 1rem auto;
+            margin: 0.75rem auto;
             max-width: 400px;
         }
 
         .vote-counter {
-            font-size: 3rem;
+            font-size: clamp(1.5rem, 3vw, 3rem);
             font-weight: 600;
             background: rgba(255,255,255,0.2);
-            padding: 2rem;
+            padding: clamp(1rem, 2vh, 2rem);
             border-radius: 20px;
-            margin: 2rem auto;
+            margin: clamp(0.5rem, 2vh, 2rem) auto;
             max-width: 600px;
         }
 
@@ -540,20 +540,20 @@
         }
 
         .vote-label {
-            font-size: 4rem;
+            font-size: clamp(2rem, 4vw, 4rem);
             font-weight: 700;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
         .vote-count {
-            font-size: 3rem;
+            font-size: clamp(1.8rem, 3vw, 3rem);
             font-weight: 700;
-            margin-top: 1rem;
+            margin-top: 0.5rem;
             background: rgba(255,255,255,0.2);
             border-radius: 50%;
-            width: 100px;
-            height: 100px;
+            width: clamp(70px, 8vw, 100px);
+            height: clamp(70px, 8vw, 100px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -596,9 +596,9 @@
         }
 
         .controversy-title {
-            font-size: 2.5rem;
+            font-size: clamp(1.5rem, 2.5vw, 2.5rem);
             font-weight: 700;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
             text-align: center;
         }
 
@@ -625,7 +625,7 @@
         }
 
         .controversy-exemplar {
-            font-size: 1.8rem;
+            font-size: clamp(1.1rem, 1.8vw, 1.8rem);
             font-weight: 600;
             margin-bottom: 0.5rem;
         }
@@ -646,15 +646,15 @@
         .scoreboard {
             background: rgba(255,255,255,0.15);
             border-radius: 20px;
-            padding: 3rem;
-            margin: 2rem auto;
+            padding: clamp(1rem, 3vh, 3rem);
+            margin: clamp(0.5rem, 2vh, 2rem) auto;
             max-width: 800px;
         }
 
         .scoreboard-title {
-            font-size: 3rem;
+            font-size: clamp(1.8rem, 3vw, 3rem);
             font-weight: 700;
-            margin-bottom: 2rem;
+            margin-bottom: clamp(0.5rem, 2vh, 2rem);
             text-align: center;
         }
 
@@ -662,11 +662,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 1rem 2rem;
-            margin: 0.5rem 0;
+            padding: clamp(0.5rem, 1vh, 1rem) clamp(1rem, 2vw, 2rem);
+            margin: 0.4rem 0;
             background: rgba(255,255,255,0.1);
             border-radius: 12px;
-            font-size: 1.8rem;
+            font-size: clamp(1.1rem, 1.8vw, 1.8rem);
         }
 
         .score-rank {
@@ -811,9 +811,9 @@
         }
 
         .waiting-subtitle {
-            font-size: 2rem;
+            font-size: clamp(1.2rem, 2vw, 2rem);
             font-weight: 600;
-            margin-bottom: 2rem;
+            margin-bottom: clamp(0.75rem, 2vh, 2rem);
             opacity: 0.9;
         }
 
@@ -1188,6 +1188,91 @@
             font-size: 1.5rem;
             opacity: 0.7;
             font-style: italic;
+        }
+
+        /* Compact layout for laptop/shorter screens */
+        @media (max-height: 820px) {
+            .lobby-top-sections {
+                gap: 1rem;
+                margin: 0.5rem auto;
+            }
+
+            .lobby-room-display-standalone,
+            .lobby-controls-standalone {
+                padding: 1rem 1.5rem;
+            }
+
+            .room-label {
+                font-size: 1rem;
+                margin-bottom: 0.25rem;
+            }
+
+            .lobby-content-area {
+                max-height: calc(100vh - 200px);
+                padding: 0 1rem 1rem;
+            }
+
+            .waiting-subtitle {
+                font-size: 1.2rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .players-waiting {
+                margin-top: 1rem;
+            }
+
+            .category-submissions {
+                margin-top: 1rem;
+            }
+
+            .category-subtitle {
+                font-size: 1.2rem;
+                margin-bottom: 0.75rem;
+            }
+
+            .player-bubble {
+                padding: 0.6rem 1rem;
+                font-size: 1rem;
+            }
+
+            .voting-arena {
+                height: 45vh;
+                margin: 1rem auto;
+            }
+
+            .submission-counter,
+            .vote-counter {
+                margin: 0.5rem auto;
+                padding: 0.75rem 1.5rem;
+            }
+
+            .controversy-container {
+                gap: 1.5rem;
+            }
+
+            .controversy-item {
+                padding: 0.75rem 1rem;
+            }
+        }
+
+        @media (max-height: 700px) {
+            .lobby-top-sections {
+                gap: 0.75rem;
+                margin: 0.25rem auto;
+            }
+
+            .lobby-room-display-standalone,
+            .lobby-controls-standalone {
+                padding: 0.75rem 1rem;
+            }
+
+            .lobby-content-area {
+                max-height: calc(100vh - 160px);
+            }
+
+            .voting-arena {
+                height: 38vh;
+            }
         }
 
         /* Animations */

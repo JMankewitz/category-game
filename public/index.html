@@ -194,6 +194,240 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* ── Tutorial / How to Play ──────────────────────────── */
+        .how-to-play-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.72);
+            font-size: 0.88rem;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 0.5rem;
+            margin-top: 0.25rem;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            transition: color 0.15s;
+        }
+        .how-to-play-btn:hover { color: white; }
+
+        .tutorial-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+            padding: 1.25rem 1.25rem 1rem;
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+
+        .tslide { display: flex; flex-direction: column; }
+        .tslide.hidden { display: none; }
+
+        .tslide-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 0.75rem;
+            text-align: center;
+        }
+
+        .tslide-caption {
+            font-size: 0.78rem;
+            color: #777;
+            text-align: center;
+            line-height: 1.4;
+            min-height: 2.4em;
+            margin-top: 0.5rem;
+        }
+
+        .cat-badge-row { text-align: center; margin-bottom: 0.6rem; }
+        .cat-badge {
+            background: linear-gradient(135deg, #764ba2, #667eea);
+            color: white;
+            font-size: 1.05rem;
+            font-weight: 700;
+            padding: 0.35rem 1rem;
+            border-radius: 20px;
+            display: inline-block;
+        }
+        .cat-badge.sm { font-size: 0.82rem; padding: 0.25rem 0.75rem; }
+
+        /* Avatar grid */
+        .avatar-grid {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .av-row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .av-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .av-bubble {
+            background: #f0f2ff;
+            border-radius: 6px;
+            padding: 2px 5px;
+            font-size: 0.58rem;
+            text-align: center;
+            max-width: 68px;
+            min-width: 22px;
+            min-height: 16px;
+            line-height: 1.3;
+            word-break: break-word;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #444;
+        }
+        .av-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 5px 4px 0;
+            border-style: solid;
+            border-color: #f0f2ff transparent transparent;
+        }
+        .av-bubble.ex { background: #e8ecff; font-size: 0.6rem; }
+        .av-bubble.ex::after { border-color: #e8ecff transparent transparent; }
+        .av-bubble.yes-b { background: #d4edda; font-size: 0.75rem; }
+        .av-bubble.yes-b::after { border-color: #d4edda transparent transparent; }
+        .av-bubble.no-b  { background: #f8d7da; font-size: 0.75rem; }
+        .av-bubble.no-b::after  { border-color: #f8d7da transparent transparent; }
+
+        .av {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            color: white;
+            font-size: 0.62rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        /* Voting split layout */
+        .item-chip {
+            background: #f8f9ff;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            padding: 0.45rem 1rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: #333;
+            margin-bottom: 0.6rem;
+        }
+        .vote-split { display: flex; gap: 6px; }
+        .vsplit-side {
+            flex: 1;
+            border-radius: 10px;
+            padding: 6px 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .vsplit-side.yes-side { background: rgba(40, 167, 69, 0.1); }
+        .vsplit-side.no-side  { background: rgba(220, 53, 69, 0.1); }
+        .vsplit-label { font-size: 0.62rem; font-weight: 700; margin-bottom: 2px; }
+        .yes-side .vsplit-label { color: #28a745; }
+        .no-side  .vsplit-label { color: #dc3545; }
+        .vsplit-avatars { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+
+        /* Score rows */
+        .score-rows { display: flex; flex-direction: column; gap: 8px; }
+        .score-row {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 8px 10px;
+        }
+        .score-row.winner { border: 2px solid rgba(102, 126, 234, 0.35); }
+        .score-row-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .pts { font-weight: 700; color: #aaa; font-size: 0.78rem; }
+        .winner-pts { color: #667eea; }
+        .split-bar {
+            height: 8px;
+            border-radius: 4px;
+            display: flex;
+            overflow: hidden;
+            margin-bottom: 3px;
+        }
+        .split-yes { background: #28a745; }
+        .split-no  { background: #dc3545; }
+        .split-label { font-size: 0.65rem; color: #999; text-align: right; }
+        .scoring-note {
+            text-align: center;
+            font-size: 0.72rem;
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        /* Slide nav */
+        .tslide-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            margin-top: 0.5rem;
+        }
+        .tnav-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 2px solid rgba(102, 126, 234, 0.35);
+            background: none;
+            font-size: 1rem;
+            cursor: pointer;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s;
+            flex-shrink: 0;
+        }
+        .tnav-btn:hover { background: rgba(102, 126, 234, 0.1); }
+        .tnav-btn.hidden { visibility: hidden; }
+        .tdots { display: flex; gap: 6px; }
+        .tdot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ddd;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .tdot.active { background: linear-gradient(135deg, #764ba2, #667eea); }
+
+        /* Got it button */
+        .got-it-btn {
+            background: linear-gradient(135deg, #764ba2, #667eea);
+        }
+        .got-it-btn h3, .got-it-btn p { color: white; }
+        .got-it-btn p { opacity: 0.85; }
     </style>
 </head>
 <body>
@@ -233,6 +467,10 @@
                     <p>Enter a room code to join</p>
                 </div>
             </a>
+
+            <div style="text-align:center; margin-top:0.25rem;">
+                <button class="how-to-play-btn" onclick="showTutorial()">How to play?</button>
+            </div>
         </div>
 
         <!-- Step 2: mode selection -->
@@ -244,7 +482,7 @@
                 Back
             </button>
 
-            <p class="step2-heading">How are you playing?</p>
+            <p class="step2-heading">How do you want to run it?</p>
 
             <div class="mode-grid">
 
@@ -273,8 +511,8 @@
                         <line x1="44" y1="56" x2="44" y2="60" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.5"/>
                         <line x1="54" y1="56" x2="74" y2="58" stroke="#764ba2" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.5"/>
                     </svg>
-                    <h3>Host View</h3>
-                    <p>Use a shared screen — TV or laptop</p>
+                    <h3>Use a shared screen</h3>
+                    <p>Put the game on a TV or laptop; players join on their phones</p>
                 </a>
 
                 <!-- Player View -->
@@ -298,11 +536,148 @@
                         <line x1="36" y1="56" x2="25" y2="52" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
                         <line x1="25" y1="33" x2="36" y2="26" stroke="#667eea" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.6"/>
                     </svg>
-                    <h3>Player View</h3>
-                    <p>Everyone plays on their own device</p>
+                    <h3>Phones only</h3>
+                    <p>No display needed — everyone plays on their own device</p>
                 </a>
 
             </div>
+        </div>
+
+        <!-- Tutorial: How to Play -->
+        <div id="tutorial" class="step hidden">
+            <button class="back-btn" onclick="showStep1()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Back
+            </button>
+
+            <div class="tutorial-card">
+
+                <!-- Slide 1: Category revealed -->
+                <div class="tslide" id="tslide-1">
+                    <div class="tslide-title">A category is revealed</div>
+                    <div>
+                        <div class="cat-badge-row"><div class="cat-badge">CRIMES 🔪</div></div>
+                        <div class="avatar-grid">
+                            <div class="av-row">
+                                <div class="av-wrap"><div class="av-bubble">?</div><div class="av" style="background:#667eea">1</div></div>
+                                <div class="av-wrap"><div class="av-bubble">?</div><div class="av" style="background:#764ba2">2</div></div>
+                                <div class="av-wrap"><div class="av-bubble">?</div><div class="av" style="background:#e96c50">3</div></div>
+                            </div>
+                            <div class="av-row">
+                                <div class="av-wrap"><div class="av-bubble">?</div><div class="av" style="background:#4ecdc4">4</div></div>
+                                <div class="av-wrap"><div class="av-bubble">?</div><div class="av" style="background:#f7b731">5</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tslide-caption">Each round a category is revealed — things like Crimes, Foods, or Sports</div>
+                </div>
+
+                <!-- Slide 2: Submit examples -->
+                <div class="tslide hidden" id="tslide-2">
+                    <div class="tslide-title">Everyone submits an example</div>
+                    <div>
+                        <div class="cat-badge-row"><div class="cat-badge sm">CRIMES 🔪</div></div>
+                        <div class="avatar-grid">
+                            <div class="av-row">
+                                <div class="av-wrap"><div class="av-bubble ex">Shoplifting</div><div class="av" style="background:#667eea">1</div></div>
+                                <div class="av-wrap"><div class="av-bubble ex">Stealing</div><div class="av" style="background:#764ba2">2</div></div>
+                                <div class="av-wrap"><div class="av-bubble ex">Junk mail</div><div class="av" style="background:#e96c50">3</div></div>
+                            </div>
+                            <div class="av-row">
+                                <div class="av-wrap"><div class="av-bubble">...</div><div class="av" style="background:#4ecdc4">4</div></div>
+                                <div class="av-wrap"><div class="av-bubble">...</div><div class="av" style="background:#f7b731">5</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tslide-caption">Each player secretly submits one example that might (or might not) fit</div>
+                </div>
+
+                <!-- Slide 3: Vote -->
+                <div class="tslide hidden" id="tslide-3">
+                    <div class="tslide-title">Vote yes or no on each one</div>
+                    <div>
+                        <div class="item-chip">"Shoplifting" — is it a crime?</div>
+                        <div class="vote-split">
+                            <div class="vsplit-side yes-side">
+                                <div class="vsplit-label">👍 YES</div>
+                                <div class="vsplit-avatars">
+                                    <div class="av-wrap"><div class="av-bubble yes-b">👍</div><div class="av" style="background:#667eea">1</div></div>
+                                    <div class="av-wrap"><div class="av-bubble yes-b">👍</div><div class="av" style="background:#764ba2">2</div></div>
+                                    <div class="av-wrap"><div class="av-bubble yes-b">👍</div><div class="av" style="background:#4ecdc4">4</div></div>
+                                </div>
+                            </div>
+                            <div class="vsplit-side no-side">
+                                <div class="vsplit-label">👎 NO</div>
+                                <div class="vsplit-avatars">
+                                    <div class="av-wrap"><div class="av-bubble no-b">👎</div><div class="av" style="background:#e96c50">3</div></div>
+                                    <div class="av-wrap"><div class="av-bubble no-b">👎</div><div class="av" style="background:#f7b731">5</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tslide-caption">Everyone votes: is this really a crime? Votes are revealed together</div>
+                </div>
+
+                <!-- Slide 4: Scoring -->
+                <div class="tslide hidden" id="tslide-4">
+                    <div class="tslide-title">Closest to 50/50 wins!</div>
+                    <div>
+                        <div class="score-rows">
+                            <div class="score-row winner">
+                                <div class="score-row-header">
+                                    <span>"Shoplifting"</span>
+                                    <span class="pts winner-pts">⭐ 3 pts</span>
+                                </div>
+                                <div class="split-bar">
+                                    <div class="split-yes" style="width:60%"></div>
+                                    <div class="split-no" style="width:40%"></div>
+                                </div>
+                                <div class="split-label">3 YES · 2 NO</div>
+                            </div>
+                            <div class="score-row">
+                                <div class="score-row-header">
+                                    <span>"Stealing"</span>
+                                    <span class="pts">1 pt</span>
+                                </div>
+                                <div class="split-bar">
+                                    <div class="split-yes" style="width:100%"></div>
+                                    <div class="split-no" style="width:0%"></div>
+                                </div>
+                                <div class="split-label">5 YES · 0 NO</div>
+                            </div>
+                        </div>
+                        <div class="scoring-note">The less obvious your example, the more points!</div>
+                    </div>
+                    <div class="tslide-caption">Items that split the room score the most. Obvious answers get almost nothing</div>
+                </div>
+
+                <!-- Nav -->
+                <div class="tslide-nav">
+                    <button class="tnav-btn hidden" id="tnav-prev" onclick="prevSlide()">←</button>
+                    <div class="tdots">
+                        <span class="tdot active" onclick="goToSlide(1)"></span>
+                        <span class="tdot" onclick="goToSlide(2)"></span>
+                        <span class="tdot" onclick="goToSlide(3)"></span>
+                        <span class="tdot" onclick="goToSlide(4)"></span>
+                    </div>
+                    <button class="tnav-btn" id="tnav-next" onclick="nextSlide()">→</button>
+                </div>
+            </div>
+
+            <!-- Got it button — shown only on last slide -->
+            <button class="action-card got-it-btn hidden" id="got-it-btn" onclick="showStep1()">
+                <div class="action-icon" style="background:rgba(255,255,255,0.2)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                </div>
+                <div class="action-text">
+                    <h3>Got it, let's play!</h3>
+                    <p>Start or join a game</p>
+                </div>
+            </button>
         </div>
 
     </div>
@@ -315,8 +690,34 @@
 
         function showStep1() {
             document.getElementById('step2').classList.add('hidden');
+            document.getElementById('tutorial').classList.add('hidden');
             document.getElementById('step1').classList.remove('hidden');
         }
+
+        let currentSlide = 1;
+        const TOTAL_SLIDES = 4;
+
+        function showTutorial() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('tutorial').classList.remove('hidden');
+            goToSlide(1);
+        }
+
+        function goToSlide(n) {
+            currentSlide = n;
+            for (let i = 1; i <= TOTAL_SLIDES; i++) {
+                document.getElementById('tslide-' + i).classList.toggle('hidden', i !== n);
+            }
+            document.querySelectorAll('.tdot').forEach((dot, i) => {
+                dot.classList.toggle('active', i + 1 === n);
+            });
+            document.getElementById('tnav-prev').classList.toggle('hidden', n === 1);
+            document.getElementById('tnav-next').classList.toggle('hidden', n === TOTAL_SLIDES);
+            document.getElementById('got-it-btn').classList.toggle('hidden', n !== TOTAL_SLIDES);
+        }
+
+        function nextSlide() { if (currentSlide < TOTAL_SLIDES) goToSlide(currentSlide + 1); }
+        function prevSlide() { if (currentSlide > 1) goToSlide(currentSlide - 1); }
     </script>
 </body>
 </html>
