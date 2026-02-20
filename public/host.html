@@ -1494,7 +1494,7 @@
                 
                 <!-- NEW: Game complete actions -->
                 <div id="gameCompleteActions" class="game-complete-actions hidden">
-                    <button id="restartGameBtn" class="restart-button">🏠 Back to Lobby</button>
+                    <button id="restartGameBtn" class="restart-button">🔄 Start New Game</button>
                 </div>
             </div>
         </div>
@@ -1600,11 +1600,9 @@
             socket.emit('set-max-rounds', { maxRounds });
         });
 
-        // NEW: Restart game button handler
+        // Restart game button handler
         restartGameBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to restart the game? This will reset all scores and return to the lobby.')) {
-                socket.emit('restart-game');
-            }
+            socket.emit('restart-game');
         });
 
         maxRoundsInput.addEventListener('keypress', (e) => {
