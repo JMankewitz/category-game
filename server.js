@@ -899,7 +899,7 @@ async function prepareNextRound(room) {
     
     if (nextCategory) {
         // Start round automatically with selected category
-        room.currentRoundDbId = await logRoundStarted(room.dbGameId, room.round, nextCategory);
+        room.currentRoundDbId = await logRoundStarted(room.dbGameId, (room.roundOffset || 0) + room.round, nextCategory);
         startSubmissionPhase(room, nextCategory);
         console.log(`Round ${room.round} started automatically with category "${nextCategory}"`);
     } else {
@@ -946,7 +946,8 @@ async function prepareNextRound(room) {
 
 async function endGame(room) {
     room.gameState = 'game-complete';
-    
+    room.round = room.maxRounds; // prevent overflow display (e.g. "Round 4/3")
+
     if (room.currentTimer) {
         room.currentTimer.cancel();
     }
@@ -987,39 +988,40 @@ async function endGame(room) {
 
 async function restartGame(room) {
     room.gameState = 'lobby';
+    // Accumulate round offset so DB round numbers stay unique across sessions
+    room.roundOffset = (room.roundOffset || 0) + room.maxRounds;
     room.round = 0;
     room.currentCategory = '';
     room.submissions = [];
-    room.categorySubmissions = [];
+    // Keep room.categorySubmissions so the lobby feed shows existing player categories
     room.currentResults = null;
     room.currentResultIndex = -1;
     room.currentRoundDbId = null;
-    
+
     if (room.currentTimer) {
         room.currentTimer.cancel();
         room.currentTimer = null;
         room.timerState = null;
     }
-    
+
+    // Keep player scores (cumulative) — only reset per-round flags
     room.players.forEach(player => {
-        player.score = 0;
         player.hasSubmitted = false;
         player.hasVoted = false;
     });
-    
-    // Create a new game record for the restart (this is the key change)
-    room.dbGameId = await logGameRestart(room.code, room.hostSocketId);
-    await initializePresetCategories(room.dbGameId);
-    
+
+    // Reset preset categories so they're available to play again
+    await resetPresetCategoryUsed(room.dbGameId);
+
     try {
         broadcastGameState(room);
     } catch (error) {
         console.error('Error broadcasting game state during restart:', error);
     }
-    
+
     updateDisplay(room);
-    
-    console.log(`Game restarted in room ${room.code}`);
+
+    console.log(`Game returned to lobby in room ${room.code} (roundOffset=${room.roundOffset})`);
 }
 
 // Create tables if they don't exist
@@ -1417,6 +1419,17 @@ function getAvailableCategories(gameId) {
     });
 }
 
+// Reset preset categories so they can be played again (used when returning to lobby)
+function resetPresetCategoryUsed(gameId) {
+    return new Promise((resolve) => {
+        db.run(`UPDATE categories SET was_used = 0 WHERE game_id = ? AND is_preset = 1`, [gameId], (err) => {
+            if (err) console.error('DB Error resetting preset categories:', err);
+            else console.log(`DB: Preset categories reset for game ${gameId}`);
+            resolve();
+        });
+    });
+}
+
 // Initialize preset categories for a new game
 async function initializePresetCategories(gameId) {
     const promises = PRESET_CATEGORIES.map(category => 
@@ -1725,7 +1738,7 @@ io.on('connection', (socket) => {
         const firstCategory = await selectNextCategory(room);
         
         if (firstCategory) {
-            room.currentRoundDbId = await logRoundStarted(room.dbGameId, room.round, firstCategory);
+            room.currentRoundDbId = await logRoundStarted(room.dbGameId, (room.roundOffset || 0) + room.round, firstCategory);
             startSubmissionPhase(room, firstCategory);
             
             // Broadcast game start

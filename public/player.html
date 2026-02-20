@@ -634,11 +634,8 @@
                         <!-- Final scores will be populated here -->
                     </div>
                     <div class="game-complete-actions">
-                        <button id="joinNewGameBtn" class="button" style="background: #667eea; margin-top: 1rem;">
-                            🎯 Join New Game
-                        </button>
                         <p style="margin-top: 1rem; font-style: italic; font-size: 0.9rem;">
-                            Or wait for host to restart this game...
+                            Waiting for host to start the next round...
                         </p>
                     </div>
                 </div>
@@ -802,7 +799,6 @@
         const categorySuccess = document.getElementById('categorySuccess');
         const lobbyPlayerCount = document.getElementById('lobbyPlayerCount');
         const lobbyWaitMsg = document.getElementById('lobbyWaitMsg');
-        const joinNewGameBtn = document.getElementById('joinNewGameBtn');
 
         // Creator controls
         const creatorControls = document.getElementById('creatorControls');
@@ -921,7 +917,6 @@
         }
 
         document.getElementById('leaveGameBtn').addEventListener('click', leaveGame);
-        joinNewGameBtn.addEventListener('click', leaveGame);
 
         // Enhanced reconnection logic
         function attemptReconnection() {
