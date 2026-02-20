@@ -1704,12 +1704,12 @@
 
         socket.on('room-update', (data) => {
             console.log('Room update:', data);
-            
+
             if (data.players) {
-                populateInitialBubbles(data.players, lobbyPlayerBubbles);
+                syncPlayerBubbles(data.players, lobbyPlayerBubbles);
                 updateStartButtonState(data.players.length, data.categorySubmissions?.length || 0);
             }
-            
+
             // Handle category submissions in room updates
             if (data.categorySubmissions) {
                 updateCategoryBubbles(data.categorySubmissions);
@@ -1853,7 +1853,7 @@
                 case 'lobby':
                     showScreen('lobby');
                     if (data.players) {
-                        populateInitialBubbles(data.players, lobbyPlayerBubbles);
+                        syncPlayerBubbles(data.players, lobbyPlayerBubbles);
                         updateStartButtonState(data.players.length, data.categorySubmissions?.length || 0);
                     }
                     // IMPORTANT: Make sure categories are updated here too
@@ -2052,6 +2052,39 @@
                 setTimeout(() => {
                     bubble.classList.remove('new');
                 }, 500);
+            });
+        }
+
+        // Incrementally sync player bubbles without clearing existing ones.
+        // Only adds bubbles for new players and removes bubbles for departed players.
+        function syncPlayerBubbles(players, container = playerBubbles) {
+            if (!players || players.length === 0) {
+                container.innerHTML = '<div class="no-players-message">No players yet...</div>';
+                return;
+            }
+
+            const noPlayersMsg = container.querySelector('.no-players-message');
+            if (noPlayersMsg) noPlayersMsg.remove();
+
+            const currentNicknames = new Set(
+                Array.from(container.querySelectorAll('.player-bubble'))
+                    .map(b => b.getAttribute('data-nickname'))
+            );
+            const newNicknames = new Set(players.map(p => p.nickname));
+
+            // Add bubbles for newly joined players (animate as new)
+            players.forEach(player => {
+                if (!currentNicknames.has(player.nickname)) {
+                    addPlayerBubble(player.nickname, true, container);
+                }
+            });
+
+            // Remove bubbles for players who left
+            currentNicknames.forEach(nickname => {
+                if (!newNicknames.has(nickname)) {
+                    const bubble = container.querySelector(`[data-nickname="${nickname}"]`);
+                    if (bubble) bubble.remove();
+                }
             });
         }
 
