@@ -1876,7 +1876,11 @@
                 case 'results':
                     waitingMessage.textContent = 'Results are being displayed...';
                     break;
-                    
+
+                case 'game-complete':
+                    // Scoreboard is already shown via 'show-round-scoreboard' — ignore display-update
+                    break;
+
                 default:
                     showScreen('waiting');
                     waitingMessage.textContent = 'Waiting for game to start...';
